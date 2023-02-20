@@ -34,7 +34,7 @@ def main():
     visit_prob_col_names = ['vp{}'.format(i+1) for i in range(number_of_simulations)]
     visit_probs_table = pd.DataFrame(visit_probs, columns=visit_prob_col_names)
 
-    cars['mean_range'] = ranges.mean(axis=1)
+    cars['mean_range'] = np.multiply(ranges, visit_probs).mean(axis=1)
     cars = pd.concat([cars, visit_probs_table], axis=1)
 
     cars_and_stations = cars.merge(stations, how='left', on='station_ix')
@@ -45,6 +45,7 @@ def main():
 
     range_agg_expression = dict(zip(visit_prob_col_names, ['sum'] * number_of_simulations))
     agg_expression = {'driving_cost' : 'sum'
+                        , 'mean_range' : 'sum'
                         , 'charging_cost' : 'sum'
                         , 'distance' : 'mean'
                         , 'x_station' : 'mean'
@@ -78,10 +79,10 @@ def main():
     axs[0,1].set_title('Chargers per station')
 
     axs[1,1].hist(station_stats['distance'], bins=20)
-    axs[1,1].set_title('Distance (miles)')
+    axs[1,1].set_title('Distance to station (miles)')
 
-    axs[1,0].hist(station_stats['charging_cost'], bins=20)
-    axs[1,0].set_title('Charging cost ($)')
+    axs[1,0].hist(station_stats['mean_range'], bins=20)
+    axs[1,0].set_title('Mean range per station (miles)')
 
     plt.legend()
 
