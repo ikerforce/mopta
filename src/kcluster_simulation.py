@@ -1,16 +1,16 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import get_ranges, compute_visiting_probability, calculate_distance
+from utils import get_ranges, compute_visiting_probability, calculate_distance, estimate_number_of_chargers
 from sklearn.cluster import KMeans
 
 
+number_of_simulations = 10
+alpha = 0.05
 driving_cost_per_mile = 0.041
 charging_cost_per_mile = 0.0388
 construction_cost_per_station = 5000
 maintenance_fee_per_charger = 500
-number_of_simulations = 10
-alpha = 0.05
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
     cars_and_stations['distance'] = calculate_distance([cars_and_stations['x'], cars_and_stations['y']]
                                                     , [cars_and_stations['x_station'], cars_and_stations['y_station']])
     cars_and_stations['driving_cost'] = cars_and_stations['distance'] * driving_cost_per_mile
-    cars_and_stations['charging_cost'] = (250 - cars_and_stations['mean_range']) * charging_cost_per_mile # * cars_and_stations['visit_prob']
+    cars_and_stations['charging_cost'] = (250 - cars_and_stations['mean_range'] + cars_and_stations['distance']) * charging_cost_per_mile # * cars_and_stations['visit_prob']
 
     print(cars_and_stations.head(10))
 
@@ -55,8 +55,7 @@ def main():
     station_stats = cars_and_stations.groupby('station_ix').agg(agg_expression)\
                                     .reset_index()
 
-    percentile = np.percentile(q=95, a=station_stats[visit_prob_col_names].values, axis=1)
-    station_stats['n_chargers'] = np.ceil(percentile / 2)
+    station_stats['n_chargers'] = estimate_number_of_chargers(station_stats[visit_prob_col_names].values)
 
     total_charging_cost = np.round(station_stats['charging_cost'].sum(), 2)
     total_driving_cost = np.round(station_stats['driving_cost'].sum(), 2)
