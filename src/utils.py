@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy.stats import truncnorm
 
 
@@ -14,3 +15,9 @@ def compute_visiting_probability(ranges:np.array, lam:float=0.012):
 
 def calculate_distance(car_location:list, station_location:list):
     return abs(car_location[0] - station_location[0]) + abs(car_location[1] - station_location[1])
+
+
+def estimate_number_of_chargers(visit_probabilities:np.array, quant=95):
+    percentile = np.percentile(q=quant, a=visit_probabilities, axis=1)
+    return np.ceil(percentile / 2)
+
