@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import numpy as np
-from scipy.stats import truncnorm
+from utils import get_ranges, compute_visiting_probability, calculate_distance
 from sklearn.cluster import KMeans
 
 
@@ -42,6 +41,8 @@ def main():
                                                     , [cars_and_stations['x_station'], cars_and_stations['y_station']])
     cars_and_stations['driving_cost'] = cars_and_stations['distance'] * driving_cost_per_mile
     cars_and_stations['charging_cost'] = (250 - cars_and_stations['mean_range']) * charging_cost_per_mile # * cars_and_stations['visit_prob']
+
+    print(cars_and_stations.head(10))
 
     range_agg_expression = dict(zip(visit_prob_col_names, ['sum'] * number_of_simulations))
     agg_expression = {'driving_cost' : 'sum'
@@ -87,20 +88,6 @@ def main():
     plt.legend()
 
     plt.show()
-
-
-def get_ranges(n_evs:int=10790, n_sims=1):
-    pd = truncnorm((20 - 100) / 50, (250 - 100) / 50, loc=100, scale=50)
-    samples = pd.rvs(size=(n_evs, n_sims))
-    return samples
-
-
-def compute_visiting_probability(ranges, lam=0.012):
-    return np.exp(-lam**2 * (ranges - 20)**2 )
-
-
-def calculate_distance(car_location:list, station_location:list):
-    return abs(car_location[0] - station_location[0]) + abs(car_location[1] - station_location[1])
 
 
 if __name__ == '__main__':
