@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import truncnorm
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
 
 
 def get_ranges(n_evs:int=10790, n_sims:int=1):
@@ -26,6 +28,57 @@ def make_column_names(prefix:str, ncols:int):
     return ['{}{}'.format(prefix, i+1) for i in range(ncols)]
 
 
+def solve_with_kmeans(ev_locations:pd.DataFrame, n_stations:int=600):
+    kmeans = KMeans(n_clusters=n_stations, random_state=0).fit(ev_locations[['ev_x', 'ev_y']])
+    station_location_ixs = kmeans.predict(ev_locations[['ev_x', 'ev_y']])
+    station_locations = kmeans.cluster_centers_
+    stations = pd.DataFrame(station_locations, columns=['station_x', 'station_y'])
+    stations['station_ix'] = np.arange(0, stations.shape[0])
+    ev_locations['station_ix'] = station_location_ixs
+    ev_and_station_locations = ev_locations.merge(stations, how='left', on='station_ix')
+    return ev_and_station_locations
+
+
+def solve_with_random_assignment(ev_locations:pd.DataFrame, n_stations:int=600):
+    n_evs = ev_locations.shape[0]
+    station_location_ixs = np.random.randint(0, 600, size=n_evs)
+    station_locations = np.asarray([np.random.uniform(0,290,size=(n_evs,)), np.random.uniform(0,150,size=(n_evs,))]).T
+    stations = pd.DataFrame(station_locations, columns=['station_x', 'station_y'])
+    stations['station_ix'] = np.arange(0, stations.shape[0])
+    ev_locations['station_ix'] = station_location_ixs
+    ev_and_station_locations = ev_locations.merge(stations, how='left', on='station_ix')
+    return ev_and_station_locations
+
+
+def plot_solution(ev_locations:pd.DataFrame, costs:pd.DataFrame):
+    fig, axs = plt.subplots(figsize=(10,10), ncols=2, nrows=2)
+    axs[0,0].scatter(x=ev_locations['ev_x'], y=ev_locations['ev_y'] , c='lightgrey', s=40, label='EV locations')
+    axs[0,0].scatter(x=costs['station_x'], y=costs['station_y'] , c=costs['n_chargers'], s=5, label='Stations')
+    axs[0,0].set_title('Station and EV locations')
+
+    axs[0,1].hist(costs['n_chargers'], bins=20)
+    axs[0,1].set_title('Chargers per station')
+
+    axs[1,1].hist(costs['distance'], bins=20)
+    axs[1,1].set_title('Mean distance to station (miles)')
+
+    axs[1,0].hist(costs['charging_cost'], bins=20)
+    axs[1,0].set_title('Mean charging cost per station ($)')
+
+    plt.legend()
+
+    plt.show()
+
+
+
+def load_ev_locations(path:str):
+    ev_locations = pd.read_csv(path, names=['ev_x', 'ev_y'])
+    ev_locations = ev_locations.loc[ev_locations.index.repeat(10)] # Repeat each location 10 times
+    ev_locations['loc_ix'] = ev_locations.index
+    ev_locations = ev_locations.reset_index(drop=True)
+    return ev_locations
+
+
 def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
     """This function calculates the average total costs given a solution and a number of simulations.
     
@@ -47,13 +100,17 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
 
     solution['distance'] = calculate_distance([solution['ev_x'], solution['ev_y']]
                                 , [solution['station_x'], solution['station_y']])
+    print(solution['distance'].min(), solution['distance'].max())
     solution['driving_cost'] = solution['distance'] * driving_cost_per_mile
 
     visit_prob_col_names = make_column_names(prefix="vp", ncols=n_sims)
     weighted_range_col_names = make_column_names(prefix="r", ncols=n_sims)
 
-    miles_to_charge = 250 - (get_ranges(n_sims=n_sims) - solution['distance'].values.reshape(-1,1))
-    visit_probs = compute_visiting_probability(miles_to_charge)
+    ranges = get_ranges(n_sims=n_sims)
+    miles_to_charge = 250 - (ranges - solution['distance'].values.reshape(-1,1))
+    visit_probs = compute_visiting_probability(ranges)
+    visit_probs[miles_to_charge > 100] == 1
+    print(visit_probs.sum())
     visit_probs_table = pd.DataFrame(visit_probs, columns=visit_prob_col_names)
     weighted_range = np.multiply(miles_to_charge, visit_probs)
     weighted_range_table = pd.DataFrame(weighted_range, columns=weighted_range_col_names)
@@ -63,7 +120,7 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
     range_agg_expression = dict(zip(visit_prob_col_names, ['sum'] * n_sims))
     w_range_agg_expression = dict(zip(weighted_range_col_names, ['sum'] * n_sims))
     agg_expression = {'driving_cost' : 'sum'
-                        , 'distance' : 'sum'
+                        , 'distance' : 'mean'
                         , 'station_x' : 'mean'
                         , 'station_y' : 'mean'} | range_agg_expression | w_range_agg_expression
 
