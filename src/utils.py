@@ -70,6 +70,69 @@ def plot_solution(ev_locations:pd.DataFrame, costs:pd.DataFrame):
     plt.show()
 
 
+def initialize_pop(ev_locations:pd.DataFrame, n_stations:int=600, pop_size:int=10):
+    pos = [solve_with_random_assignment(ev_locations, n_stations) for i in range(pop_size)]
+    vel = np.zeros((pop_size, 1))  # velocity
+    best = np.zeros((pop_size, 1))  # best score for individual
+    pop = [[pos[i], vel[i], best[i]] for i in range(pop_size)]
+    return pop
+
+
+def solve_with_pso(ev_locations:pd.DataFrame, n_stations:int=600):
+
+    generations = 5
+    a = 0.5
+    b = 2.5
+    hyper_n = 50
+    cog_and_social = {i: [np.random.uniform(a, b), np.random.uniform(a, b)] for i in range(hyper_n)}
+    inert = {i: max(0, min(np.random.uniform(1.01, 2) * (0.5 * (cog_and_social[i][1] + cog_and_social[i][0]) - 1), 0.99))
+             for i in range(hyper_n)}
+    params = [[inert[i], cog_and_social[i][0], cog_and_social[i][1]] for i in range(hyper_n)]
+
+    pop = initialize_pop(ev_locations, n_stations=600)
+
+    exp=0
+
+    w1 = params[exp][0]
+    w2 = params[exp][1]
+    w3 = params[exp][2]
+
+    overall_best = [[0], 10000000]  # initialize global best
+
+    particle_bests = {i: [pop[i], 10000000] for i in range(len(pop))}  # initialize dictionary of bests for each particle
+    # run evolution for a given number of generations
+    for generation in range(generations):
+        print("Generation {}".format(generation))
+        # evaluate fit of the current population
+
+        costs = [compute_cost_per_station(x[0]) for x in pop]
+        pop_fit = [X[1] for X in costs]
+
+        print('Evaluation done. Best for this gen is {}'.format(np.max(pop_fit)))
+
+        # find global best
+        idx_best = np.argmin(pop_fit)  # get index for best individual in population
+        # extract from lists
+        if pop_fit[idx_best] < overall_best[1]:  # if idx_best is better than previous best, then update it, np.max(pop_fit)
+            overall_best = [pop[idx_best][0], pop_fit[idx_best]]  # list of overall best individual and fitness score
+
+        #  update the best solution for each particle
+        for particle in range(len(pop)):
+            # if the current fitness of a particle is better than historic bests, then update it
+            if pop_fit[particle] < particle_bests[particle][1]:
+                particle_bests[particle] = [pop[particle][0], pop_fit[particle]]
+                pop[particle][2] = pop[particle][0]
+
+        vel_update = [np.multiply(w1, pop[i][1]) +  # inertia
+                        np.multiply(w2*np.random.uniform(0, 1), (np.subtract(pop[i][2], pop[i][0]))) +  # cognitive
+                        np.multiply(w3*np.random.uniform(0, 1), (np.subtract(overall_best[0], pop[i][0])))  # social
+                        for i in range(len(pop))]
+
+        # update position, velocity with the latest versions
+        for particle in range(len(pop)):
+            pop[particle][0] = np.add(pop[particle][0], vel_update[particle])
+            pop[particle][1] = vel_update[particle]
+
 
 def load_ev_locations(path:str):
     ev_locations = pd.read_csv(path, names=['ev_x', 'ev_y'])
@@ -142,6 +205,6 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
 
     print(cost_str)
 
-    return aggregated_cost_per_station
+    return aggregated_cost_per_station, total_cost
 
 
