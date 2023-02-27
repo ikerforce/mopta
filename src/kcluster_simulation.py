@@ -1,4 +1,4 @@
-from utils import compute_cost_per_station, solve_with_kmeans, plot_solution, load_ev_locations, solve_with_random_assignment, solve_with_pso
+from utils import compute_cost_per_station, solve_with_kmeans, plot_solution, load_ev_locations, solve_with_random_assignment, reassign_locations
 import argparse
 
 
@@ -15,11 +15,12 @@ def main():
         ev_and_station_locations = solve_with_random_assignment(ev_locations)
     elif args.method == 'kmeans':
         ev_and_station_locations = solve_with_kmeans(ev_locations, n_stations=600)
-    # ev_and_station_locations = solve_with_pso(ev_locations)
 
-    costs_per_station, total_cost = compute_cost_per_station(solution=ev_and_station_locations, n_sims=args.nsims)
+    costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution=ev_and_station_locations, n_sims=args.nsims)
 
-    plot_solution(ev_locations, costs_per_station)
+    reassign_locations(ev_and_station_locations, n_sims=args.nsims)
+
+    # plot_solution(ev_locations, costs_per_station)
 
 
 def get_execution_arguments():
@@ -29,6 +30,8 @@ def get_execution_arguments():
     args = parser.parse_args()
     if args.nsims is None:
         args.nsims = 10
+    else:
+        args.nsims = int(args.nsims)
     if args.method not in ['kmeans', 'random']:
         raise Exception("{} is not a valid solving method. Please use kmeans or random.".format(args.method))
     return args

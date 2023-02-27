@@ -70,76 +70,38 @@ def plot_solution(ev_locations:pd.DataFrame, costs:pd.DataFrame):
     plt.show()
 
 
-def initialize_pop(ev_locations:pd.DataFrame, n_stations:int=600, pop_size:int=10):
-    pos = [solve_with_random_assignment(ev_locations, n_stations) for i in range(pop_size)]
-    vel = np.zeros((pop_size, 1))  # velocity
-    best = np.zeros((pop_size, 1))  # best score for individual
-    pop = [[pos[i], vel[i], best[i]] for i in range(pop_size)]
-    return pop
-
-
-def solve_with_pso(ev_locations:pd.DataFrame, n_stations:int=600):
-
-    generations = 5
-    a = 0.5
-    b = 2.5
-    hyper_n = 50
-    cog_and_social = {i: [np.random.uniform(a, b), np.random.uniform(a, b)] for i in range(hyper_n)}
-    inert = {i: max(0, min(np.random.uniform(1.01, 2) * (0.5 * (cog_and_social[i][1] + cog_and_social[i][0]) - 1), 0.99))
-             for i in range(hyper_n)}
-    params = [[inert[i], cog_and_social[i][0], cog_and_social[i][1]] for i in range(hyper_n)]
-
-    pop = initialize_pop(ev_locations, n_stations=600)
-
-    exp=0
-
-    w1 = params[exp][0]
-    w2 = params[exp][1]
-    w3 = params[exp][2]
-
-    overall_best = [[0], 10000000]  # initialize global best
-
-    particle_bests = {i: [pop[i], 10000000] for i in range(len(pop))}  # initialize dictionary of bests for each particle
-    # run evolution for a given number of generations
-    for generation in range(generations):
-        print("Generation {}".format(generation))
-        # evaluate fit of the current population
-
-        costs = [compute_cost_per_station(x[0]) for x in pop]
-        pop_fit = [X[1] for X in costs]
-
-        print('Evaluation done. Best for this gen is {}'.format(np.max(pop_fit)))
-
-        # find global best
-        idx_best = np.argmin(pop_fit)  # get index for best individual in population
-        # extract from lists
-        if pop_fit[idx_best] < overall_best[1]:  # if idx_best is better than previous best, then update it, np.max(pop_fit)
-            overall_best = [pop[idx_best][0], pop_fit[idx_best]]  # list of overall best individual and fitness score
-
-        #  update the best solution for each particle
-        for particle in range(len(pop)):
-            # if the current fitness of a particle is better than historic bests, then update it
-            if pop_fit[particle] < particle_bests[particle][1]:
-                particle_bests[particle] = [pop[particle][0], pop_fit[particle]]
-                pop[particle][2] = pop[particle][0]
-
-        vel_update = [np.multiply(w1, pop[i][1]) +  # inertia
-                        np.multiply(w2*np.random.uniform(0, 1), (np.subtract(pop[i][2], pop[i][0]))) +  # cognitive
-                        np.multiply(w3*np.random.uniform(0, 1), (np.subtract(overall_best[0], pop[i][0])))  # social
-                        for i in range(len(pop))]
-
-        # update position, velocity with the latest versions
-        for particle in range(len(pop)):
-            pop[particle][0] = np.add(pop[particle][0], vel_update[particle])
-            pop[particle][1] = vel_update[particle]
-
-
 def load_ev_locations(path:str):
     ev_locations = pd.read_csv(path, names=['ev_x', 'ev_y'])
     ev_locations = ev_locations.loc[ev_locations.index.repeat(10)] # Repeat each location 10 times
     ev_locations['loc_ix'] = ev_locations.index
     ev_locations = ev_locations.reset_index(drop=True)
     return ev_locations
+
+
+def reassign_locations(solution:pd.DataFrame, n_sims=10):
+    costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution, n_sims)
+    cost_per_ev_location = ev_and_station_assignment[['loc_ix', 'distance', 'station_ix', 'vp1']].groupby('loc_ix').agg({'station_ix' : 'first', 'distance' : 'sum', 'vp1' : 'sum'}).reset_index()
+    cost_per_vehicle = cost_per_ev_location.merge(costs_per_station[['station_ix', 'n_chargers']], on='station_ix', how='left')
+    cost_per_vehicle['marginal_chargers'] = cost_per_vehicle['vp1'] / 2
+    print(cost_per_vehicle.sort_values(['n_chargers', 'marginal_chargers', 'distance'], ascending=False).head(20))
+
+
+
+def simulate_evs(solution:pd.DataFrame, n_sims:int=100):
+
+    solution['distance'] = calculate_distance([solution['ev_x'], solution['ev_y']]
+                            , [solution['station_x'], solution['station_y']])
+    visit_prob_col_names = make_column_names(prefix="vp", ncols=n_sims)
+    weighted_range_col_names = make_column_names(prefix="r", ncols=n_sims)
+
+    ranges = get_ranges(n_sims=n_sims)
+    miles_to_charge = 250 - (ranges - solution['distance'].values.reshape(-1,1))
+    visit_probs = compute_visiting_probability(ranges)
+    visit_probs[miles_to_charge > 100] == 1
+    visit_probs_table = pd.DataFrame(visit_probs, columns=visit_prob_col_names)
+    weighted_range = np.multiply(miles_to_charge, visit_probs)
+    weighted_range_table = pd.DataFrame(weighted_range, columns=weighted_range_col_names)
+    return pd.concat([solution, visit_probs_table, weighted_range_table], axis=1), visit_prob_col_names, weighted_range_col_names
 
 
 def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
@@ -161,24 +123,8 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
     construction_cost_per_station = 5000
     maintenance_fee_per_charger = 500
 
-    solution['distance'] = calculate_distance([solution['ev_x'], solution['ev_y']]
-                                , [solution['station_x'], solution['station_y']])
-    print(solution['distance'].min(), solution['distance'].max())
+    solution, visit_prob_col_names, weighted_range_col_names = simulate_evs(solution, n_sims)
     solution['driving_cost'] = solution['distance'] * driving_cost_per_mile
-
-    visit_prob_col_names = make_column_names(prefix="vp", ncols=n_sims)
-    weighted_range_col_names = make_column_names(prefix="r", ncols=n_sims)
-
-    ranges = get_ranges(n_sims=n_sims)
-    miles_to_charge = 250 - (ranges - solution['distance'].values.reshape(-1,1))
-    visit_probs = compute_visiting_probability(ranges)
-    visit_probs[miles_to_charge > 100] == 1
-    print(visit_probs.sum())
-    visit_probs_table = pd.DataFrame(visit_probs, columns=visit_prob_col_names)
-    weighted_range = np.multiply(miles_to_charge, visit_probs)
-    weighted_range_table = pd.DataFrame(weighted_range, columns=weighted_range_col_names)
-
-    solution = pd.concat([solution, visit_probs_table, weighted_range_table], axis=1)
 
     range_agg_expression = dict(zip(visit_prob_col_names, ['sum'] * n_sims))
     w_range_agg_expression = dict(zip(weighted_range_col_names, ['sum'] * n_sims))
@@ -205,6 +151,6 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
 
     print(cost_str)
 
-    return aggregated_cost_per_station, total_cost
+    return aggregated_cost_per_station, solution, total_cost
 
 
