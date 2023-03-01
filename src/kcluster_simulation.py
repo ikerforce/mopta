@@ -16,6 +16,8 @@ def main():
     elif args.method == 'kmeans':
         ev_and_station_locations = solve_with_kmeans(ev_locations, n_stations=600)
 
+    print(ev_and_station_locations.head())
+
     costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution=ev_and_station_locations, n_sims=args.nsims)
 
     reassign_locations(ev_and_station_locations, n_sims=args.nsims)

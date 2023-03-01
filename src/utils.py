@@ -5,6 +5,12 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 
 
+driving_cost_per_mile = 0.041
+charging_cost_per_mile = 0.0388
+construction_cost_per_station = 5000
+maintenance_fee_per_charger = 500
+
+
 def get_ranges(n_evs:int=10790, n_sims:int=1):
     pd = truncnorm((20 - 100) / 50, (250 - 100) / 50, loc=100, scale=50)
     samples = pd.rvs(size=(n_evs, n_sims))
@@ -70,21 +76,58 @@ def plot_solution(ev_locations:pd.DataFrame, costs:pd.DataFrame):
     plt.show()
 
 
+def repeat_rows(df:pd.DataFrame, times_to_repeat:int):
+    df = df.loc[df.index.repeat(times_to_repeat)] # Repeat each location 10 times
+    df['loc_ix'] = df.index
+    df = df.reset_index(drop=True)
+    return df
+
+
 def load_ev_locations(path:str):
     ev_locations = pd.read_csv(path, names=['ev_x', 'ev_y'])
-    ev_locations = ev_locations.loc[ev_locations.index.repeat(10)] # Repeat each location 10 times
-    ev_locations['loc_ix'] = ev_locations.index
-    ev_locations = ev_locations.reset_index(drop=True)
+    ev_locations = repeat_rows(ev_locations, times_to_repeat=10)
     return ev_locations
+
+
+def compute_proportional_chargers(cost_per_vehicle:pd.DataFrame):
+    cost_per_vehicle['vp_proportion'] = cost_per_vehicle['vp1'] / cost_per_vehicle.groupby('station_ix')['vp1'].transform('sum')
+    return cost_per_vehicle['vp_proportion'].values
+
+
+def compute_adjusted_charger_cost(num_chargers, max_num_chargers=8, over_charger_capacity_penalty=1000, charger_cost=500):
+    return np.maximum(0, num_chargers - max_num_chargers) * over_charger_capacity_penalty + np.minimum(max_num_chargers, num_chargers) * charger_cost
 
 
 def reassign_locations(solution:pd.DataFrame, n_sims=10):
     costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution, n_sims)
-    cost_per_ev_location = ev_and_station_assignment[['loc_ix', 'distance', 'station_ix', 'vp1']].groupby('loc_ix').agg({'station_ix' : 'first', 'distance' : 'sum', 'vp1' : 'sum'}).reset_index()
-    cost_per_vehicle = cost_per_ev_location.merge(costs_per_station[['station_ix', 'n_chargers']], on='station_ix', how='left')
-    cost_per_vehicle['marginal_chargers'] = cost_per_vehicle['vp1'] / 2
-    print(cost_per_vehicle.sort_values(['n_chargers', 'marginal_chargers', 'distance'], ascending=False).head(20))
+    cost_per_ev_location = ev_and_station_assignment[['loc_ix', 'driving_cost', 'station_ix', 'vp1', 'ev_x', 'ev_y']].groupby('loc_ix').agg({'ev_x' : 'first', 'ev_y' : 'first', 'station_ix' : 'first', 'driving_cost' : 'sum', 'vp1' : 'sum'}).reset_index()
+    cost_per_vehicle = cost_per_ev_location.merge(costs_per_station[['station_ix', 'station_x', 'station_y', 'n_chargers']], on='station_ix', how='left')
+    print(cost_per_vehicle.head())
+    print('^^^^^^^^^^^^^^^^^')
+    cost_per_vehicle['proportional_chargers'] = compute_proportional_chargers(cost_per_vehicle) * cost_per_vehicle['n_chargers']
+    print(cost_per_vehicle[['station_ix', 'n_chargers', 'proportional_chargers']].sort_values('station_ix').head(20))
+    print('^^^^^^^^^^^^^^^^^')
+    cost_per_vehicle['proportional_charger_cost'] = compute_adjusted_charger_cost(cost_per_vehicle['proportional_chargers'])
+    cost_per_vehicle['adjusted_cost'] = cost_per_vehicle['proportional_charger_cost'] + cost_per_vehicle['driving_cost']
+    feasible_costly_locations = cost_per_vehicle[cost_per_vehicle['proportional_chargers'] < cost_per_vehicle['n_chargers']]
+    most_costly_location = feasible_costly_locations.iloc[feasible_costly_locations['adjusted_cost'].idxmax()][['loc_ix', 'ev_x', 'ev_y', 'station_ix', 'proportional_chargers', 'adjusted_cost']]
+    compute_reassignment_cost(cost_per_vehicle, most_costly_location)
 
+
+def compute_reassignment_cost(cost_per_vehicle, most_costly_location):
+    most_costly_location = pd.DataFrame([most_costly_location.values], columns=['mcl_loc_ix', 'mcl_ev_x', 'mcl_ev_y', 'mcl_station_ix', 'mcl_proportional_chargers', 'mcl_adjusted_cost'])
+    most_costly_location = repeat_rows(most_costly_location, times_to_repeat=cost_per_vehicle.shape[0])
+    cost_per_vehicle = pd.concat([cost_per_vehicle, most_costly_location], axis=1)
+    cost_per_vehicle['new_cost'] = calculate_distance([cost_per_vehicle['mcl_ev_x'], cost_per_vehicle['mcl_ev_y']]
+                        , [cost_per_vehicle['station_x'], cost_per_vehicle['station_y']]) * driving_cost_per_mile
+    print(cost_per_vehicle['new_cost'].head(10))
+    cost_per_vehicle['reassigned_chargers'] = cost_per_vehicle['n_chargers'] + cost_per_vehicle['mcl_proportional_chargers']
+    cost_per_vehicle.loc[cost_per_vehicle['mcl_station_ix'] == cost_per_vehicle['station_ix'], 'reassigned_chargers'] = cost_per_vehicle['n_chargers'] - cost_per_vehicle['mcl_proportional_chargers']
+    cost_per_vehicle['new_cost'] = cost_per_vehicle['new_cost'] + compute_adjusted_charger_cost(cost_per_vehicle['reassigned_chargers'])
+    print(cost_per_vehicle['new_cost'].head(10))
+
+    
+    print(cost_per_vehicle.loc[cost_per_vehicle['adjusted_cost'] > cost_per_vehicle['new_cost']][['n_chargers', 'reassigned_chargers', 'adjusted_cost', 'new_cost']].head())
 
 
 def simulate_evs(solution:pd.DataFrame, n_sims:int=100):
@@ -118,11 +161,6 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
 
         """
 
-    driving_cost_per_mile = 0.041
-    charging_cost_per_mile = 0.0388
-    construction_cost_per_station = 5000
-    maintenance_fee_per_charger = 500
-
     solution, visit_prob_col_names, weighted_range_col_names = simulate_evs(solution, n_sims)
     solution['driving_cost'] = solution['distance'] * driving_cost_per_mile
 
@@ -130,8 +168,8 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
     w_range_agg_expression = dict(zip(weighted_range_col_names, ['sum'] * n_sims))
     agg_expression = {'driving_cost' : 'sum'
                         , 'distance' : 'mean'
-                        , 'station_x' : 'mean'
-                        , 'station_y' : 'mean'} | range_agg_expression | w_range_agg_expression
+                        , 'station_x' : 'first'
+                        , 'station_y' : 'first'} | range_agg_expression | w_range_agg_expression
 
     cost_per_station = solution.groupby('station_ix').agg(agg_expression)\
                                     .reset_index()
