@@ -94,40 +94,40 @@ def compute_proportional_chargers(cost_per_vehicle:pd.DataFrame):
     return cost_per_vehicle['vp_proportion'].values
 
 
-def compute_adjusted_charger_cost(num_chargers, max_num_chargers=8, over_charger_capacity_penalty=1000, charger_cost=500):
+def compute_adjusted_charger_cost(num_chargers, max_num_chargers=8, charger_cost=500):
+    over_charger_capacity_penalty=charger_cost * max_num_chargers + 1 # This way one charger over capacity will cost more than having a full station within capacity
     return np.maximum(0, num_chargers - max_num_chargers) * over_charger_capacity_penalty + np.minimum(max_num_chargers, num_chargers) * charger_cost
 
 
-def reassign_locations(solution:pd.DataFrame, n_sims=10):
+def find_most_costly_location(solution:pd.DataFrame, n_sims=10):
     costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution, n_sims)
+    costs_per_station['adjusted_charger_cost'] = compute_adjusted_charger_cost(costs_per_station['n_chargers'])
     cost_per_ev_location = ev_and_station_assignment[['loc_ix', 'driving_cost', 'station_ix', 'vp1', 'ev_x', 'ev_y']].groupby('loc_ix').agg({'ev_x' : 'first', 'ev_y' : 'first', 'station_ix' : 'first', 'driving_cost' : 'sum', 'vp1' : 'sum'}).reset_index()
-    cost_per_vehicle = cost_per_ev_location.merge(costs_per_station[['station_ix', 'station_x', 'station_y', 'n_chargers']], on='station_ix', how='left')
-    print(cost_per_vehicle.head())
-    print('^^^^^^^^^^^^^^^^^')
-    cost_per_vehicle['proportional_chargers'] = compute_proportional_chargers(cost_per_vehicle) * cost_per_vehicle['n_chargers']
-    print(cost_per_vehicle[['station_ix', 'n_chargers', 'proportional_chargers']].sort_values('station_ix').head(20))
-    print('^^^^^^^^^^^^^^^^^')
+    cost_per_vehicle = cost_per_ev_location.merge(costs_per_station[['station_ix', 'station_x', 'station_y', 'n_chargers', 'adjusted_charger_cost', 'station_cost']], on='station_ix', how='left')
+    print(cost_per_vehicle.sort_values('station_ix').head(10))
+    cost_per_vehicle['proportion_of_visits'] = compute_proportional_chargers(cost_per_vehicle)
+    cost_per_vehicle['proportional_chargers'] = cost_per_vehicle['proportion_of_visits'] * cost_per_vehicle['n_chargers']
     cost_per_vehicle['proportional_charger_cost'] = compute_adjusted_charger_cost(cost_per_vehicle['proportional_chargers'])
     cost_per_vehicle['adjusted_cost'] = cost_per_vehicle['proportional_charger_cost'] + cost_per_vehicle['driving_cost']
-    feasible_costly_locations = cost_per_vehicle[cost_per_vehicle['proportional_chargers'] < cost_per_vehicle['n_chargers']]
-    most_costly_location = feasible_costly_locations.iloc[feasible_costly_locations['adjusted_cost'].idxmax()][['loc_ix', 'ev_x', 'ev_y', 'station_ix', 'proportional_chargers', 'adjusted_cost']]
-    compute_reassignment_cost(cost_per_vehicle, most_costly_location)
+    # print(cost_per_vehicle[['station_ix', 'station_x', 'station_y', 'n_chargers', 'adjusted_charger_cost', 'proportional_chargers', 'proportional_charger_cost']].sort_values('n_chargers', ascending=False).head(10))
+    most_costly_location = cost_per_vehicle.iloc[cost_per_vehicle['adjusted_cost'].idxmax()][['loc_ix', 'ev_x', 'ev_y', 'station_ix', 'proportional_chargers', 'adjusted_cost']]
+    costs_per_station = costs_per_station[['station_ix', 'n_chargers', 'station_x', 'station_y']]
+    compute_reassignment_cost(costs_per_station, most_costly_location)
 
 
-def compute_reassignment_cost(cost_per_vehicle, most_costly_location):
+def compute_reassignment_cost(costs_per_station, most_costly_location):
     most_costly_location = pd.DataFrame([most_costly_location.values], columns=['mcl_loc_ix', 'mcl_ev_x', 'mcl_ev_y', 'mcl_station_ix', 'mcl_proportional_chargers', 'mcl_adjusted_cost'])
-    most_costly_location = repeat_rows(most_costly_location, times_to_repeat=cost_per_vehicle.shape[0])
-    cost_per_vehicle = pd.concat([cost_per_vehicle, most_costly_location], axis=1)
-    cost_per_vehicle['new_cost'] = calculate_distance([cost_per_vehicle['mcl_ev_x'], cost_per_vehicle['mcl_ev_y']]
-                        , [cost_per_vehicle['station_x'], cost_per_vehicle['station_y']]) * driving_cost_per_mile
-    print(cost_per_vehicle['new_cost'].head(10))
-    cost_per_vehicle['reassigned_chargers'] = cost_per_vehicle['n_chargers'] + cost_per_vehicle['mcl_proportional_chargers']
-    cost_per_vehicle.loc[cost_per_vehicle['mcl_station_ix'] == cost_per_vehicle['station_ix'], 'reassigned_chargers'] = cost_per_vehicle['n_chargers'] - cost_per_vehicle['mcl_proportional_chargers']
-    cost_per_vehicle['new_cost'] = cost_per_vehicle['new_cost'] + compute_adjusted_charger_cost(cost_per_vehicle['reassigned_chargers'])
-    print(cost_per_vehicle['new_cost'].head(10))
+    most_costly_location = repeat_rows(most_costly_location, times_to_repeat=costs_per_station.shape[0])
+    costs_per_station = pd.concat([costs_per_station, most_costly_location], axis=1)
+    costs_per_station['new_cost'] = calculate_distance([costs_per_station['mcl_ev_x'], costs_per_station['mcl_ev_y']]
+                        , [costs_per_station['station_x'], costs_per_station['station_y']]) * driving_cost_per_mile
+    costs_per_station['reassigned_chargers'] = costs_per_station['n_chargers'] + costs_per_station['mcl_proportional_chargers']
+    costs_per_station.loc[costs_per_station['mcl_station_ix'] == costs_per_station['station_ix'], 'reassigned_chargers'] = costs_per_station['n_chargers']
+    costs_per_station['new_charger_proportion'] = costs_per_station['mcl_proportional_chargers'] / costs_per_station['reassigned_chargers']
+    costs_per_station['new_cost'] = costs_per_station['new_cost'] + compute_adjusted_charger_cost(costs_per_station['reassigned_chargers']) * costs_per_station['new_charger_proportion']
+    costs_per_station['savings'] = costs_per_station['mcl_adjusted_cost'] - costs_per_station['new_cost']
 
-    
-    print(cost_per_vehicle.loc[cost_per_vehicle['adjusted_cost'] > cost_per_vehicle['new_cost']][['n_chargers', 'reassigned_chargers', 'adjusted_cost', 'new_cost']].head())
+    print(costs_per_station[['loc_ix', 'station_ix', 'n_chargers', 'reassigned_chargers', 'mcl_adjusted_cost', 'new_cost', 'savings', 'mcl_station_ix']].sort_values('savings', ascending=False))
 
 
 def simulate_evs(solution:pd.DataFrame, n_sims:int=100):
@@ -177,12 +177,16 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
     aggregated_cost_per_station = cost_per_station[['station_ix', 'driving_cost', 'distance', 'station_x', 'station_y']]
     aggregated_cost_per_station['n_chargers'] = estimate_number_of_chargers(cost_per_station[visit_prob_col_names].values)
     aggregated_cost_per_station['charging_cost'] = cost_per_station[weighted_range_col_names].values.mean(axis=1) * charging_cost_per_mile
+    aggregated_cost_per_station['station_cost'] = aggregated_cost_per_station['driving_cost'] \
+                                                    + aggregated_cost_per_station['charging_cost'] \
+                                                    + aggregated_cost_per_station['n_chargers'] * maintenance_fee_per_charger \
+                                                    + construction_cost_per_station
 
     total_charging_cost = np.round(aggregated_cost_per_station['charging_cost'].sum(), 2)
     total_driving_cost = np.round(aggregated_cost_per_station['driving_cost'].sum(), 2)
     total_station_cost = np.round(aggregated_cost_per_station.shape[0] * construction_cost_per_station, 2)
     total_maintenance_cost = np.round(aggregated_cost_per_station['n_chargers'].sum() * maintenance_fee_per_charger, 2)
-    total_cost = np.round(total_charging_cost + total_driving_cost + total_station_cost + total_maintenance_cost, 2)
+    total_cost = np.round(aggregated_cost_per_station['station_cost'].sum(), 2)
 
     cost_str = "\nCharging cost: ${:,}\nDriving cost: ${:,}\nConstruction cost: ${:,}\nMaintenance cost: ${:,}\n-----------------------------------------------------\nTotal cost: ${:,}.\n"\
                 .format(total_charging_cost, total_driving_cost, total_station_cost, total_maintenance_cost, total_cost)
