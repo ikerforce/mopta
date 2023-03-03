@@ -1,5 +1,6 @@
 from utils import compute_adjusted_charger_cost, simulate_ranges, compute_visiting_probability, estimate_number_of_chargers, calculate_distance
 import numpy as np
+import copy
 
 
 driving_cost_per_mile = 0.041
@@ -24,8 +25,8 @@ class Station:
         self.construction_cost = construction_cost
 
     def get_number_of_chargers(self):
-        visit_probabilities = [[v.visit_prob] for v in self.vehicles]
-        self.n_chargers = estimate_number_of_chargers(visit_probabilities)
+        visit_probabilities = np.sum([v.visit_prob for v in self.vehicles])
+        self.n_chargers = np.ceil(visit_probabilities / 2)
 
     def calculate_distances(self):
         ev_xs = [v.x for v in self.vehicles]
@@ -49,24 +50,28 @@ class Station:
         self.calculate_driving_cost()
         self.calculate_charging_cost()
         self.calculate_maintenance_cost()
-        self.station_cost = self.charging_cost + self.construction_cost + self.driving_cost + self.charging_cost
+        self.station_cost = self.charging_cost + self.construction_cost + self.driving_cost + self.maintenance_cost
 
 
+def generate_random_ev():
+    x = np.random.uniform(0,290)
+    y = np.random.uniform(0,170)
+    ev = ElectricVehicle(x, y)
+    return ev
 
-ev1 = ElectricVehicle(0,10)
-ev2 = ElectricVehicle(9,7)
-ev3 = ElectricVehicle(4,1)
-vehicles1 = [ev1, ev2, ev3]
+def reassign_vehicle(vehicle_ix:int, previous_station_ix:int, new_station_ix:int, stations:list):
+    previous_station = stations[previous_station_ix]
+    new_station = stations[new_station_ix]
+    new_station.vehicles = new_station.vehicles + [previous_station.vehicles[vehicle_ix]]
+    previous_station.vehicles = previous_station.vehicles[0:vehicle_ix] + previous_station.vehicles[vehicle_ix+1:]
+    new_station.estimate_station_cost()
+    previous_station.estimate_station_cost()
 
-ev1 = ElectricVehicle(3,12)
-ev2 = ElectricVehicle(3,3)
-ev3 = ElectricVehicle(8,7)
-vehicles2 = [ev1, ev2, ev3]
 
-ev1 = ElectricVehicle(11,11)
-ev2 = ElectricVehicle(8,8)
-ev3 = ElectricVehicle(7,2)
-vehicles3 = [ev1, ev2, ev3]
+n_evs_per_station = [3, 17, 8]
+vehicles1 = [generate_random_ev() for i in range(n_evs_per_station[0])]
+vehicles2 = [generate_random_ev() for i in range(n_evs_per_station[1])]
+vehicles3 = [generate_random_ev() for i in range(n_evs_per_station[2])]
 
 station1 = Station(5,5,vehicles1)
 station2 = Station(1,0,vehicles2)
@@ -74,22 +79,36 @@ station3 = Station(5,1,vehicles3)
 station1.estimate_station_cost()
 station2.estimate_station_cost()
 station3.estimate_station_cost()
-print(station1.station_cost)
-print(station2.station_cost)
-print(station3.station_cost)
 
 stations = [station1, station2, station3]
+
+initial_total_cost = np.sum(s.station_cost for s in stations)
+
 max_station_ix = np.argmax([s.station_cost for s in stations])
 max_vehicle_ix = np.argmax([ev.visit_prob for ev in stations[max_station_ix].vehicles])
 most_costly_station_vehicles = stations[max_station_ix].vehicles.copy()
 print('Most costly staion is station {}'.format(max_station_ix+1))
 
-for ix, s in enumerate(stations):
-    if ix != max_station_ix:
-        s.vehicles = s.vehicles + [most_costly_station_vehicles[max_vehicle_ix]]
-    else:
-        s.vehicles = most_costly_station_vehicles[0:max_vehicle_ix] + most_costly_station_vehicles[max_vehicle_ix+1:]
+new_stations = copy.deepcopy(stations)
 
-for s in stations:
-    s.estimate_station_cost()
-    print(s.station_cost)
+for ix, ns in enumerate(new_stations):
+    if ix != max_station_ix:
+        ns.vehicles = ns.vehicles + [most_costly_station_vehicles[max_vehicle_ix]]
+    else:
+        ns.vehicles = ns.vehicles[0:max_vehicle_ix] + ns.vehicles[max_vehicle_ix+1:]
+
+cost_increase = [ns.station_cost - s.station_cost for (s,ns) in zip(stations, new_stations)]
+savings = cost_increase[max_station_ix]
+print(cost_increase)
+cost_increase[max_station_ix] = 50000
+lowest_increase_ix = np.argmin(cost_increase)
+
+saved_cost = savings + cost_increase[lowest_increase_ix]
+if saved_cost < 0:
+    print('A vehicle will be relocated from station {} to station {} with a saved expense of {}.'.format(max_station_ix+1, lowest_increase_ix+1, saved_cost))
+    reassign_vehicle(vehicle_ix=max_vehicle_ix, previous_station_ix=max_station_ix, new_station_ix=lowest_increase_ix, stations=stations)
+
+
+total_cost = np.sum(s.station_cost for s in stations)
+
+print(initial_total_cost, total_cost, initial_total_cost-total_cost)
