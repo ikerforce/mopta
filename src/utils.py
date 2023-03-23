@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.stats import truncnorm
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
+import argparse
 
 
 driving_cost_per_mile = 0.041
@@ -11,7 +12,21 @@ construction_cost_per_station = 5000
 maintenance_fee_per_charger = 500
 
 
-def get_ranges(n_evs:int=10790, n_sims:int=1):
+def get_execution_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--nsims", help="Number of simulations to be ran. If not specified, the value is 10.")
+    parser.add_argument("--method", help="Solution method to be used. Can be kmeans or random.")
+    args = parser.parse_args()
+    if args.nsims is None:
+        args.nsims = 10
+    else:
+        args.nsims = int(args.nsims)
+    if args.method not in ['kmeans', 'random']:
+        raise Exception("{} is not a valid solving method. Please use kmeans or random.".format(args.method))
+    return args
+
+
+def simulate_ranges(n_evs:int=10790, n_sims:int=1):
     pd = truncnorm((20 - 100) / 50, (250 - 100) / 50, loc=100, scale=50)
     samples = pd.rvs(size=(n_evs, n_sims))
     return samples
@@ -110,13 +125,17 @@ def find_most_costly_location(solution:pd.DataFrame, n_sims=10):
     cost_per_vehicle['proportional_charger_cost'] = compute_adjusted_charger_cost(cost_per_vehicle['proportional_chargers'])
     cost_per_vehicle['adjusted_cost'] = cost_per_vehicle['proportional_charger_cost'] + cost_per_vehicle['driving_cost']
     # print(cost_per_vehicle[['station_ix', 'station_x', 'station_y', 'n_chargers', 'adjusted_charger_cost', 'proportional_chargers', 'proportional_charger_cost']].sort_values('n_chargers', ascending=False).head(10))
-    most_costly_location = cost_per_vehicle.iloc[cost_per_vehicle['adjusted_cost'].idxmax()][['loc_ix', 'ev_x', 'ev_y', 'station_ix', 'proportional_chargers', 'adjusted_cost']]
+    # most_costly_location = cost_per_vehicle.iloc[cost_per_vehicle['adjusted_cost'].idxmax()][['loc_ix', 'ev_x', 'ev_y', 'station_ix', 'proportional_chargers', 'adjusted_cost']]
+    sorted_locations = cost_per_vehicle.sort_values(['station_cost', 'adjusted_cost'], ascending=[False, False])
+    print(sorted_locations.head())
+    most_costly_location = sorted_locations[['loc_ix', 'ev_x', 'ev_y', 'station_ix', 'proportional_chargers', 'adjusted_cost', 'station_cost']].head(1).values
+    print(most_costly_location)
     costs_per_station = costs_per_station[['station_ix', 'n_chargers', 'station_x', 'station_y']]
     compute_reassignment_cost(costs_per_station, most_costly_location)
 
 
 def compute_reassignment_cost(costs_per_station, most_costly_location):
-    most_costly_location = pd.DataFrame([most_costly_location.values], columns=['mcl_loc_ix', 'mcl_ev_x', 'mcl_ev_y', 'mcl_station_ix', 'mcl_proportional_chargers', 'mcl_adjusted_cost'])
+    most_costly_location = pd.DataFrame(most_costly_location, columns=['mcl_loc_ix', 'mcl_ev_x', 'mcl_ev_y', 'mcl_station_ix', 'mcl_proportional_chargers', 'mcl_adjusted_cost', 'mcl_station_cost'])
     most_costly_location = repeat_rows(most_costly_location, times_to_repeat=costs_per_station.shape[0])
     costs_per_station = pd.concat([costs_per_station, most_costly_location], axis=1)
     costs_per_station['new_cost'] = calculate_distance([costs_per_station['mcl_ev_x'], costs_per_station['mcl_ev_y']]
@@ -127,7 +146,7 @@ def compute_reassignment_cost(costs_per_station, most_costly_location):
     costs_per_station['new_cost'] = costs_per_station['new_cost'] + compute_adjusted_charger_cost(costs_per_station['reassigned_chargers']) * costs_per_station['new_charger_proportion']
     costs_per_station['savings'] = costs_per_station['mcl_adjusted_cost'] - costs_per_station['new_cost']
 
-    print(costs_per_station[['loc_ix', 'station_ix', 'n_chargers', 'reassigned_chargers', 'mcl_adjusted_cost', 'new_cost', 'savings', 'mcl_station_ix']].sort_values('savings', ascending=False))
+    print(costs_per_station[['loc_ix', 'station_ix', 'n_chargers', 'reassigned_chargers', 'mcl_adjusted_cost', 'new_cost', 'savings', 'mcl_station_ix', 'mcl_station_cost']].sort_values('savings', ascending=False))
 
 
 def simulate_evs(solution:pd.DataFrame, n_sims:int=100):
@@ -137,7 +156,7 @@ def simulate_evs(solution:pd.DataFrame, n_sims:int=100):
     visit_prob_col_names = make_column_names(prefix="vp", ncols=n_sims)
     weighted_range_col_names = make_column_names(prefix="r", ncols=n_sims)
 
-    ranges = get_ranges(n_sims=n_sims)
+    ranges = simulate_ranges(n_sims=n_sims)
     miles_to_charge = 250 - (ranges - solution['distance'].values.reshape(-1,1))
     visit_probs = compute_visiting_probability(ranges)
     visit_probs[miles_to_charge > 100] == 1
@@ -194,5 +213,4 @@ def compute_cost_per_station(solution:pd.DataFrame, n_sims:int=100):
     print(cost_str)
 
     return aggregated_cost_per_station, solution, total_cost
-
 
