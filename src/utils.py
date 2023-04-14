@@ -36,6 +36,30 @@ def compute_visiting_probability(ranges:np.array, lam:float=0.012):
     return np.exp(-lam**2 * (ranges - 20)**2 )
 
 
+def assign_closest(ev_locations:pd.DataFrame, station_locations:pd.DataFrame):
+    ev_locations = ev_locations[['ev_x', 'ev_y', 'loc_ix']]
+    ev_locations['key'] = 0
+    station_locations['key'] = 0
+    combination = ev_locations.merge(station_locations, on='key', how='outer')
+    combination['distance'] = combination.apply(lambda row: calculate_distance_coords(row['ev_x'], row['ev_y'], row['station_x'], row['station_y']), axis=1)
+    combination = combination.sort_values('distance', ascending=True).groupby('loc_ix').first().reset_index()
+    return combination[['ev_x', 'ev_y', 'loc_ix', 'station_ix', 'station_x', 'station_y']]
+
+
+
+
+def generate_random_stations(x_range=290, y_range=150, n=600):
+    x = np.random.uniform(low=0, high=x_range, size=n)
+    y = np.random.uniform(low=0, high=y_range, size=n)
+    ixs = np.asarray(list(range(n)))
+    ind = np.dstack([ixs,x,y])[0]
+    return ind
+
+
+def calculate_distance_coords(x1:float, y1:float, x2:float, y2:float):
+    return abs(x1 - x2) + abs(y1 - y2)
+
+
 def calculate_distance(car_location:list, station_location:list):
     return abs(car_location[0] - station_location[0]) + abs(car_location[1] - station_location[1])
 
@@ -100,7 +124,6 @@ def repeat_rows(df:pd.DataFrame, times_to_repeat:int):
 
 def load_ev_locations(path:str):
     ev_locations = pd.read_csv(path, names=['ev_x', 'ev_y'])
-    ev_locations = repeat_rows(ev_locations, times_to_repeat=10)
     return ev_locations
 
 

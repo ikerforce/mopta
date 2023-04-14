@@ -1,7 +1,10 @@
-from utils import compute_adjusted_charger_cost, simulate_ranges, compute_visiting_probability, calculate_distance, load_ev_locations, solve_with_kmeans, compute_cost_per_station
+from utils import compute_adjusted_charger_cost, repeat_rows, simulate_ranges, compute_visiting_probability, calculate_distance, load_ev_locations, generate_random_stations, solve_with_kmeans, compute_cost_per_station, assign_closest
 import numpy as np
 import copy
 import pandas as pd
+import time
+
+solution_id = time.strftime('%Y_%m_%d_%H_%M_%S', time.gmtime(time.time()))
 
 
 driving_cost_per_mile = 0.041
@@ -79,14 +82,19 @@ def reassign_vehicle(vehicle_ix:int, previous_station_ix:int, new_station_ix:int
 
 
 ev_locations = load_ev_locations(path="data/MOPTA2023_car_locations.csv")
-ev_and_station_locations = solve_with_kmeans(ev_locations, n_stations=600)
-print(ev_and_station_locations.head())
+ev_locations = repeat_rows(ev_locations, times_to_repeat=10)
+# ev_and_station_locations = solve_with_kmeans(ev_locations, n_stations=600)
+# print(ev_and_station_locations.head())
+
+station_locations = pd.DataFrame(generate_random_stations(), columns=['station_ix', 'station_x', 'station_y'])
+
+ev_and_station_locations = assign_closest(ev_locations, station_locations)
+ev_and_station_locations = repeat_rows(ev_and_station_locations, times_to_repeat=10)
 
 aggregated_cost_per_station, solution, total_cost = compute_cost_per_station(ev_and_station_locations, 100)
 
-station_df = ev_and_station_locations[['station_ix', 'station_x', 'station_y']].drop_duplicates()
-station_dict = station_df.set_index('station_ix').T.to_dict('list')
-
+station_locations = ev_and_station_locations[['station_ix', 'station_x', 'station_y']].drop_duplicates()
+station_dict = station_locations.set_index('station_ix').T.to_dict('list')
 
 
 def vehicles_from_df(df):
@@ -119,8 +127,8 @@ stations = vehicles_from_df(ev_and_station_locations)
 
 saved_cost = -1
 iterations = 0
-max_iter = 2000
-max_chargers = 8 + 1
+max_iter = 200
+max_chargers = 8
 
 def select_vehicles_to_reassign(vehicles, original_n_chargers):
     vehicles_to_reassign = []
@@ -141,7 +149,7 @@ while (saved_cost < 0 or max_chargers > 8) and iterations < max_iter:
 
     for ix, s in enumerate(stations):
         s.estimate_station_cost()
-        print('station', ix, s.station_cost)
+        # print('station', ix, s.station_cost)
 
     max_chargers = np.max([s.n_chargers for s in stations])
 
@@ -213,3 +221,9 @@ print(df.head())
 print('Max chargers: ', max([s.n_chargers for s in stations]))
 
 aggregated_cost_per_station, solution, total_cost = compute_cost_per_station(df, 100)
+
+solution.to_csv(f'data/solutions/{solution_id}.csv', index=False, sep='\t')
+
+with open('data/solutions/index.csv', 'a') as outfile:
+    outfile.write(f"{solution_id}\t{str(total_cost)}\n")
+outfile.close()
