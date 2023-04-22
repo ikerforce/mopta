@@ -46,8 +46,6 @@ def assign_closest(ev_locations:pd.DataFrame, station_locations:pd.DataFrame):
     return combination[['ev_x', 'ev_y', 'loc_ix', 'station_ix', 'station_x', 'station_y']]
 
 
-
-
 def generate_random_stations(x_range=290, y_range=150, n=600):
     x = np.random.uniform(low=0, high=x_range, size=n)
     y = np.random.uniform(low=0, high=y_range, size=n)

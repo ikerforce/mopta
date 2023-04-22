@@ -1,5 +1,4 @@
-from utils import compute_cost_per_station, solve_with_kmeans, plot_solution, load_ev_locations, solve_with_random_assignment, reassign_locations
-import argparse
+from utils import compute_cost_per_station, solve_with_kmeans, plot_solution, load_ev_locations, solve_with_random_assignment, find_most_costly_location, get_execution_arguments
 
 
 
@@ -18,25 +17,14 @@ def main():
 
     print(ev_and_station_locations.head())
 
-    costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution=ev_and_station_locations, n_sims=args.nsims)
+    # costs_per_station, ev_and_station_assignment, total_cost = compute_cost_per_station(solution=ev_and_station_locations, n_sims=args.nsims)
 
-    reassign_locations(ev_and_station_locations, n_sims=args.nsims)
+    # find_most_costly_location(ev_and_station_locations, n_sims=args.nsims)
 
     # plot_solution(ev_locations, costs_per_station)
 
 
-def get_execution_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--nsims", help="Number of simulations to be ran. If not specified, the value is 10.")
-    parser.add_argument("--method", help="Solution method to be used. Can be kmeans or random.")
-    args = parser.parse_args()
-    if args.nsims is None:
-        args.nsims = 10
-    else:
-        args.nsims = int(args.nsims)
-    if args.method not in ['kmeans', 'random']:
-        raise Exception("{} is not a valid solving method. Please use kmeans or random.".format(args.method))
-    return args
+
 
 
 if __name__ == '__main__':

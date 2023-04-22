@@ -32,7 +32,7 @@ n_stations = 600
 pop_size = 100
 
 
-def generate_individual(x_range=290, y_range=150, n=n_stations):
+def generate_random_stations(x_range=290, y_range=150, n=n_stations):
     x = np.random.uniform(low=0, high=x_range, size=n)
     y = np.random.uniform(low=0, high=y_range, size=n)
     ind = np.dstack([x,y])[0]
