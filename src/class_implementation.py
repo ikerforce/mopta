@@ -83,9 +83,6 @@ def reassign_vehicle(vehicle_ix:int, previous_station_ix:int, new_station_ix:int
 
 ev_locations = load_ev_locations(path="data/MOPTA2023_car_locations.csv")
 ev_locations['loc_ix'] = np.array(range(ev_locations.shape[0]))
-# ev_locations = repeat_rows(ev_locations, times_to_repeat=10)
-# ev_and_station_locations = solve_with_kmeans(ev_locations, n_stations=600)
-# # print(ev_and_station_locations.head())
 
 station_locations = pd.DataFrame(generate_random_stations(), columns=['station_ix', 'station_x', 'station_y'])
 
@@ -95,7 +92,8 @@ ev_and_station_locations = repeat_rows(ev_and_station_locations, times_to_repeat
 
 aggregated_cost_per_station, solution, total_cost = compute_cost_per_station(ev_and_station_locations, 100)
 
-station_locations = ev_and_station_locations[['station_ix', 'station_x', 'station_y']].drop_duplicates()
+station_locations = station_locations[['station_ix', 'station_x', 'station_y']]
+
 station_dict = station_locations.set_index('station_ix').T.to_dict('list')
 
 
@@ -116,17 +114,6 @@ def vehicles_from_df(df):
 
 stations = vehicles_from_df(ev_and_station_locations)
 
-
-
-# n_evs_per_station = [10, 40, 50]
-# vehicles1 = [generate_random_ev() for i in range(n_evs_per_station[0])]
-# vehicles2 = [generate_random_ev() for i in range(n_evs_per_station[1])]
-# vehicles3 = [generate_random_ev() for i in range(n_evs_per_station[2])]
-
-# station1 = Station(5,5,vehicles1)
-# station2 = Station(1,0,vehicles2)
-# station3 = Station(5,1,vehicles3)
-
 saved_cost = -1
 iterations = 0
 max_iter = 200
@@ -146,24 +133,17 @@ while (saved_cost < 0 or max_chargers > 8) and iterations < max_iter:
 
     iterations+= 1
 
-    # stations = [station1, station2, station3]
-
-
     for ix, s in enumerate(stations):
         s.estimate_station_cost()
-        # # print('station', ix, s.station_cost)
 
     max_chargers = np.max([s.n_chargers for s in stations])
 
     initial_total_cost = np.sum(s.station_cost for s in stations)
 
     max_station_ix = np.argmax([s.station_cost for s in stations])
-    # # print('I', len(stations[max_station_ix].vehicles))
     vehicles_to_reassign = select_vehicles_to_reassign(stations[max_station_ix].vehicles, stations[max_station_ix].n_chargers)
-    # # print('O', len(stations[max_station_ix].vehicles))
     n_to_reassign = len(vehicles_to_reassign)
     most_costly_station_vehicles = stations[max_station_ix].vehicles.copy()
-    # # print('Most costly station is station {}'.format(max_station_ix+1))
 
     new_stations = copy.deepcopy(stations)
 
@@ -186,8 +166,6 @@ while (saved_cost < 0 or max_chargers > 8) and iterations < max_iter:
 
     saved_cost = savings + cost_increase[lowest_increase_ix]
     if saved_cost < 0:
-        # # print('A vehicle will be relocated from station {} to station {} with a saved expense of {}.'.format(max_station_ix+1, lowest_increase_ix+1, saved_cost))
-        # reassign_vehicle(vehicle_ix=max_vehicle_ix, previous_station_ix=max_station_ix, new_station_ix=lowest_increase_ix, stations=stations)
         new_station.vehicles = new_station.vehicles + vehicles_to_reassign
         old_station.vehicles = old_station.vehicles[n_to_reassign:]
     else:
@@ -196,16 +174,6 @@ while (saved_cost < 0 or max_chargers > 8) and iterations < max_iter:
 
     total_cost = np.sum(s.station_cost for s in stations)
 
-    # # print('-----------------------\nPrevious cost: {}\nNew cost: {}.\nTotal savings: {}.\n------------------'.format(initial_total_cost, total_cost, initial_total_cost-total_cost))
-
-
-# for ix, s in enumerate(stations):
-#     s.estimate_station_cost()
-#     # print('Station ', ix)
-#     # print('n_vehicles: ', len(s.vehicles))
-#     # print('n_chargers:', s.n_chargers)
-#     # print('Cost: ', s.station_cost)
-#     # print('.-.-.-.-.-.-.-.-.-.')
 
 def stations_to_df(stations):
     rows = []
@@ -218,9 +186,7 @@ def stations_to_df(stations):
 
 df = stations_to_df(stations)
 
-# print(df.head())
-
-# print('Max chargers: ', max([s.n_chargers for s in stations]))
+print(len(stations))
 
 aggregated_cost_per_station, solution, total_cost = compute_cost_per_station(df, 100)
 

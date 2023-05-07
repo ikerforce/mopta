@@ -4,6 +4,7 @@ from scipy.stats import truncnorm
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import argparse
+from tqdm import tqdm
 
 
 driving_cost_per_mile = 0.041
@@ -42,7 +43,27 @@ def assign_closest(ev_locations:pd.DataFrame, station_locations:pd.DataFrame):
     station_locations['key'] = 0
     combination = ev_locations.merge(station_locations, on='key', how='outer')
     combination['distance'] = combination.apply(lambda row: calculate_distance_coords(row['ev_x'], row['ev_y'], row['station_x'], row['station_y']), axis=1)
-    combination = combination.sort_values('distance', ascending=True).groupby('loc_ix').first().reset_index()
+    combination = combination[['station_ix', 'ev_ix', 'distance']]
+    combination = repeat_rows(combination, times_to_repeat=10, ix_col='ev_ix')
+    combination.sort_values('distance', ascending=True)
+    vehicle_count = dict(zip(list(station_locations['station_ix'].values), np.zeros(station_locations.shape[0])))
+    assignments = []
+    step = 0
+    for loc in tqdm(set(list(combination['ev_ix'].values))):
+        step += 1
+        # print(loc)
+        options = combination[combination['ev_ix'] == loc].copy()
+        # print(options.head())
+        combination = combination[combination['ev_ix'] != loc]
+        assignments.append(options.values[0])
+        stat_ix = options.values[0][4]
+        vehicle_count[stat_ix] += 1
+        if vehicle_count[stat_ix] == 16:
+            combination = combination[combination['station_ix'] != stat_ix]
+        if step % 100 == 0:
+            print(combination.shape)
+            print(vehicle_count)
+    combination = pd.DataFrame(assignments, columns=combination.columns)
     return combination[['ev_x', 'ev_y', 'loc_ix', 'station_ix', 'station_x', 'station_y']]
 
 
@@ -113,10 +134,11 @@ def plot_solution(ev_locations:pd.DataFrame, costs:pd.DataFrame):
     plt.show()
 
 
-def repeat_rows(df:pd.DataFrame, times_to_repeat:int):
+def repeat_rows(df:pd.DataFrame, times_to_repeat:int, ix_col:str='loc_ix'):
     df = df.loc[df.index.repeat(times_to_repeat)] # Repeat each location 10 times
-    df['loc_ix'] = df.index
-    df = df.reset_index(drop=True)
+    if ix_col is not None:
+        df[ix_col] = df.index
+        df = df.reset_index(drop=True)
     return df
 
 
