@@ -227,7 +227,7 @@ def KNN(population, K, gen, local_best_scores):
         station_cost, charger_cost = 0,0
         for s in station_counter:
           station_cost += construction_cost_per_station * (station_counter[s] > 0)
-          charger_cost += maintenance_fee_per_charger * station_counter[s]
+          charger_cost += maintenance_fee_per_charger * np.ceil(station_counter[s] / 2)
         # penalty cost (% assigned) (1-pct_assigned)*M
         pct_assigned = assigned/vehicle_positions.shape[0]
         penalty_cost_no_assignment_made = (vehicle_positions.shape[0] - assigned) * no_assignment_penalty # no_assignment_penalty * (vehicle_positions.shape[0] - assigned) # (1-pct_assigned) * 
