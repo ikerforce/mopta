@@ -42,7 +42,7 @@ car_data = car_data[car_data[:,0] < x_max]
 car_data = car_data[car_data[:,1] < y_max]
 
 # define the population
-options = {'c1': 0.09, 'c2': 0.1, 'w':0.96}
+options = {'c1': 0.09, 'c2': 0.1, 'w':0.85}
 
 # uniform distribution for generating random points in the search space
 ud_x = uniform(0, x_max)
@@ -295,6 +295,7 @@ parameters = [
     for k in w_values
     ]
 
+
 global_bests_tuning = []
 global_best_score_tuning = []
 population_fitness_tuning = []
@@ -317,7 +318,7 @@ for params in parameters:
         car_anchors = np.random.choice(list(range(car_data.shape[0])), n_individual)
         car_data_anchor = car_data[car_anchors]
         population = gen_pop(pop_size, car_data_anchor)
-        generations = 100
+        generations = 500
         K = 30
         global_best_stations = car_data_anchor #np.array([[ud_x.rvs(1)[0],ud_y.rvs(1)[0]] for i in range(n_individual)]) # position of every station in the global best
         global_best_score = 1000000000

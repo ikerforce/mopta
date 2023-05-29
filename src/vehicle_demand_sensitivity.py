@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Sun May 14 13:01:59 2023
+Created on Sat May 27 21:06:21 2023
 
 @author: fergushathorn
 """
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.stats import uniform
-from tqdm import tqdm
 from scipy.stats import truncnorm
 import time
 from sklearn.neighbors import BallTree
-import ray
+import os
 
-# Define individual structures for small instance
+car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv')
+car_data = np.array(car_data)
+
 
 n_individual = 600 # stations in an individual
 pop_size = 100 # number of individuals
 x_max = 290 # size of search space on x axis
 y_max = 150 # size of search space on y axis
 max_chargers = 8 # max number of chargers at a station
-# get sample of vehicle ranges
-min_range = 20
-max_range = 250
-mean_range = 100
-sd_range = 50
+
+# car_data = car_data[car_data[:,0] < x_max]
+# car_data = car_data[car_data[:,1] < y_max]
 
 # cost parameters
 driving_cost_per_mile = 0.041
@@ -36,10 +36,6 @@ construction_cost_per_station = 5000
 maintenance_fee_per_charger = 500
 no_assignment_penalty = 5000
 exceed_range_penalty = 5000
-
-
-car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv')
-car_data = np.array(car_data)
 
 # define the population
 options = {'c1': 0.07, 'c2': 0.13, 'w':0.85}
@@ -78,18 +74,18 @@ class Individual:
         social_components = ud.rvs(1) * options['c2'] * (global_best_stations - self.positions)
         
         new_velocities = inertia_components + cognitive_components + social_components
-        new_velocities[new_velocities[:,0] > 1, 0] = 1
-        new_velocities[new_velocities[:,1] > 1, 1] = 1
-        new_velocities[new_velocities[:,0] < -1, 0] = -1
-        new_velocities[new_velocities[:,1] < -1, 1] = -1
+        new_velocities[new_velocities[:,0] > 1, 0] = 1#max(0.01, (options['w']**g[0]))
+        new_velocities[new_velocities[:,1] > 1, 1] = 1#max(0.01, (options['w']**g[0]))
+        new_velocities[new_velocities[:,0] < -1, 0] = -1#max(0.01, (options['w']**g[0]))
+        new_velocities[new_velocities[:,1] < -1, 1] = -1#max(0.01, (options['w']**g[0]))
         new_positions = new_velocities + self.positions
         
         new_positions.reshape(n_individual, 2)
         
         self.positions = new_positions
         self.velocities = new_velocities
-        
-        
+    
+
 nd = norm(0.5,0.1) # normal distribution for sampling velocities
 
 def gen_pop(pop_size, car_data_anchor):
@@ -115,6 +111,13 @@ def gen_pop(pop_size, car_data_anchor):
                                           velocities=velocities)}
                           )
     return population
+
+
+# get sample of vehicle ranges
+min_range = 20
+max_range = 250
+mean_range = 100
+sd_range = 50
 
 # sample ranges for each vehicle
 def get_samples(min_range=min_range,
@@ -144,7 +147,7 @@ def KNN(population, K, gen, local_best_scores):
     S = 16
     for individual in range(pop_size):
           
-        if gen < 0:
+        if gen % 100000 == 0:
             ranges = get_samples() # rng.ranges#
             rng.ranges = ranges
         else:
@@ -231,11 +234,11 @@ def KNN(population, K, gen, local_best_scores):
         # distance_cost = sum(np.array(distance_to_station)**2) * 10
         
         # penalty for vehicles that do not travel to a charger (to make sure the best global solution does not favour low demand scenarios)
-        non_travelling_vehicles = car_data.shape[0] * 10 - sum(v_b)
-        non_travelling_vehicle_cost = non_travelling_vehicles * maintenance_fee_per_charger
+        # non_travelling_vehicles = car_data.shape[0] * 10 - sum(v_b)
+        # non_travelling_vehicle_cost = non_travelling_vehicles * maintenance_fee_per_charger
       
         total_cost_no_penalty = driving_cost + charging_cost + station_cost + charger_cost
-        total_cost = total_cost_no_penalty + penalty_cost_no_assignment_made + non_travelling_vehicle_cost # + distance_cost # penalty_cost_exceeding_range
+        total_cost = total_cost_no_penalty + penalty_cost_no_assignment_made # + distance_cost # penalty_cost_exceeding_range
       
         population[individual].cost = total_cost
         population[individual].assignment_proportion = pct_assigned
@@ -276,65 +279,96 @@ def evaluate(population, vehicles, global_best_score, global_best_stations, loca
     
     return global_best_score, global_best_stations, global_best_station_counter, global_best_index, global_best_assignments, local_best_scores, population_fitness, population_fitness_no_penalty
 
-#%% Hyper-param tuning
 
-# parameters = [{'c1' : 0.1, 'c2' : 0.1, 'w' : 0.97},
-#               {'c1' : 0.5, 'c2' : 0.1, 'w' : 0.97},
-#               {'c1' : 0.15, 'c2' : 0.1, 'w' : 0.97}]
-
-# generate parameter combinations
-c1_values = np.round(np.arange(0.04, 0.06, 0.01), decimals=2)
-c2_values = np.round(np.arange(0.15, 0.2, 0.01), decimals=2)
-w_values = np.around(np.arange(0.84, 0.93, 0.02), decimals=2)
-reps = 8
-
-parameters = [
-    {'c1' : i, 'c2' : j, 'w' : k}
-    for i in c1_values
-    for j in c2_values
-    for k in w_values
-    ]
-
-global_bests_tuning = []
-global_best_score_tuning = []
-population_fitness_tuning = []
-population_fitness_no_penalty_tuning = []
-
-
-@ray.remote
-def single_run(params, pop_size=pop_size):
-    global_best_stations_reps = []
-    global_best_score_reps = []
-    pop_fitness_reps = []
-    pop_fitness_no_penalty_reps = []
+for stress_demand in [1, 5, 10, 20, 30, 40, 50]: 
     
-    for r in range(reps):
+    print("Swarming for the {} percentile of demand".format(stress_demand))
+    
+    newpath = '/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/VehicleNumberSensitivity/percentile_'+str(stress_demand) 
+    if not os.path.exists(newpath):
+        os.makedirs(newpath)
+    # get sample of vehicle ranges
+    min_range = 20
+    max_range = 250
+    mean_range = 100
+    sd_range = 50
+
+    
+    # sample ranges for each vehicle
+    def get_samples(min_range=min_range,
+                    max_range=max_range,
+                    mean_range=mean_range,
+                    sd_range=sd_range):
+        pd = truncnorm((min_range - mean_range) / sd_range, 
+                       (max_range - mean_range) / sd_range, 
+                       loc=mean_range, scale=sd_range)
+        samples = pd.rvs(size=(car_data.shape[0], 10))
+        samples_mean = np.mean(samples, axis=1)
+        pctile = np.percentile(samples_mean, stress_demand)
+        samples_aggregated = np.tile(pctile, (car_data.shape[0],))
+    
+        return samples_aggregated
+    
+    # ranges sampled
+    samples = get_samples()
+    rng = Ranges(ranges=samples)
+    
+    global_bests_mean_sensitivity = []
+    global_best_positions_mean_sensitivity = []
+    number_of_stations = []
+    number_of_chargers = []
+    
+    temp_global_bests_mean_sensitivity = []
+    temp_global_best_positions_mean_sensitivity = []
+    temp_number_of_stations = []
+    temp_number_of_chargers = []
+    temp_unmet_demand = []
+    
+    
+    for reps in range(10):
+        
+
         bests = []
         local_bests = []
         mean_prop = []
         pop_fitness = []
         pop_fitness_no_penalty = []
         # print("Generating population...")
+        pop_size = 50
         car_anchors = np.random.choice(list(range(car_data.shape[0])), n_individual)
         car_data_anchor = car_data[car_anchors]
         population = gen_pop(pop_size, car_data_anchor)
         generations = 500
         K = 30
+        rand = False
         global_best_stations = car_data_anchor #np.array([[ud_x.rvs(1)[0],ud_y.rvs(1)[0]] for i in range(n_individual)]) # position of every station in the global best
+        # global best score
         global_best_score = 1000000000
         global_best_station_counter, global_best_index = None,None
         global_best_assignments = None
         local_best_scores = [1e9 for i in range(pop_size)] # storing local best scores (not positions)
+        start = time.time()
         particle_movement = []
         for gen in range(generations):
+            # start_eval = time.time()
             global_best_score, global_best_stations, global_best_station_counter, global_best_index, global_best_assignments, local_best_scores, population_fitness, population_fitness_no_penalty = evaluate(population, car_data, global_best_score, global_best_stations, local_best_scores, K, global_best_station_counter, global_best_index, global_best_assignments, gen)
+            # end_eval = time.time()
+            # print("Eval time {:.2f}".format(end_eval - start_eval))
             bests.append(global_best_score)
             local_bests.append(np.mean(local_best_scores))
             pop_fitness.append(population_fitness)
             pop_fitness_no_penalty.append(population_fitness_no_penalty)
+            # if gen % 100 == 0:
+            #     print(gen, np.mean(pop_fitness_no_penalty))
               
-            for ind in population:
-                population[ind].update_positions(global_best_stations, [gen, generations], params)
+            if not rand:
+              # start_update = time.time()
+                for ind in population:
+                    population[ind].update_positions(global_best_stations, [gen, generations])
+            else:
+                population = gen_pop(pop_size, car_data_anchor)
+            # end_update = time.time()
+            # print("Update time {:.2f}".format(end_update - start_update))
             
             props = []
             gen_movement = []
@@ -342,26 +376,34 @@ def single_run(params, pop_size=pop_size):
                 props.append(population[i].assignment_proportion)
                 gen_movement.append(population[i].positions)
             
-            mean_prop.append(np.mean(props))
+            if not rand: 
+                mean_prop.append(np.mean(props))
             particle_movement.append(gen_movement)
+            
+            
+        num_chargers = [global_best_station_counter[i] for i in global_best_station_counter if global_best_station_counter[i] > 0]    
+        temp_global_bests_mean_sensitivity.append(global_best_score)
+        temp_global_best_positions_mean_sensitivity.append(global_best_stations)
+        temp_number_of_stations.append(int(len(num_chargers)))
+        temp_number_of_chargers.append(num_chargers)
         
-        global_best_stations_reps.append(global_best_stations)
-        global_best_score_reps.append(global_best_score)
-        pop_fitness_reps.append(pop_fitness)
-        pop_fitness_no_penalty_reps.append(pop_fitness_no_penalty)
+        print('Rep {} complete'.format(reps))
         
-    global_bests_tuning.append(global_best_stations_reps)
-    global_best_score_tuning.append(np.mean(global_best_score_reps))
-    population_fitness_tuning.append(np.mean(pop_fitness_reps))
-    population_fitness_no_penalty_tuning.append(np.mean(pop_fitness_no_penalty_reps))
-    data = [params['c1'], params['c2'], params['w'], np.mean(global_best_score_reps), np.mean(pop_fitness_reps), np.mean(pop_fitness_no_penalty_reps)]
-    data = [str(d) for d in data]
-    with open('results/hpTuning.csv', 'a') as outfile:
-        outfile.write("\t".join(data)+"\n")
-    outfile.close()
-    return data
-
-
-start = time.time()
-all_data = ray.get([single_run.remote(params) for params in parameters])
-print(time.time() - start)
+        # print("{:.3f} seconds".format(time.time()-start))
+        # print("Overall improvement of {:.2f}%".format(1-np.mean(pop_fitness[-1])/np.mean(pop_fitness[0])))
+        # print('Best result: {:.2f}'.format(global_best_score))
+    
+    global_bests_mean_sensitivity = temp_global_bests_mean_sensitivity
+    global_best_positions_mean_sensitivity = temp_global_best_positions_mean_sensitivity
+    number_of_stations = temp_number_of_stations
+    number_of_chargers = temp_number_of_chargers
+    
+    total_chargers_list = []
+    for solution in range(len(number_of_chargers)-1):
+        sol = np.ceil(np.array(number_of_chargers[solution]) / 2)
+        total_chargers_list.append(int(sum(sol)))
+    
+    np.savetxt(newpath+'/best_scores.txt', global_bests_mean_sensitivity)
+    # np.savetxt(newpath+'/best_positions.txt', global_best_positions_mean_sensitivity[:-1])
+    np.savetxt(newpath+'/number_of_stations.txt', number_of_stations)
+    np.savetxt(newpath+'/number_of_chargers.txt', total_chargers_list)
