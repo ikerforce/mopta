@@ -237,6 +237,24 @@ app.layout = html.Div(
                             marks=dict([[x, str(int(100 * x)) + '%'] for x in np.arange(0.1, 1, 0.2)]),
                             className="dcc_control",
                         ),
+
+                        html.Div(children=[
+                            html.A(
+                                html.Button(
+                                "Run simulation",
+                                id="run_simulation",
+                                ),
+                            ),
+
+
+                            html.A(
+                                html.Button(
+                                "Refresh",
+                                id="refresh_simulation",
+                                ),
+                            ),
+                        ]),
+
                         html.Div(
                             [
                                 dcc.Graph(id='simulation_cost')
@@ -445,8 +463,8 @@ app.layout = html.Div(
 
 
 @app.callback(Output('new_location_data', 'data'),
-            [Input('service_level_slider', 'value'),])
-def update_new_location_data(service_level_slider):
+            [Input('service_level_slider', 'value'), Input('run_simulation', 'n_clicks'), ])
+def update_new_location_data(service_level_slider, n_clicks):
 
     location_data = prep_data().to_dict(orient="records")
 
