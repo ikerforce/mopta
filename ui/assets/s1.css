@@ -118,17 +118,17 @@ body {
   line-height: 1.6;
   font-weight: 400;
   font-family: "Open Sans", "HelveticaNeue", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  color: #FFFFFF;
-  background-color: rgb(0, 0, 0);
+  color: rgb(50, 50, 50);
+  background-color: #FFFFFF;
   margin: 5%;
 }
 .pretty_container {
   border-radius: 5px;
-  background-color: rgb(50, 50, 50);
+  background-color: #F9F9F9;
   margin: 10px;
   padding: 15px;
   position: relative;
-  box-shadow: 2px 2px 2px rgb(30, 30, 30);
+  box-shadow: 2px 2px 2px lightgrey;
 }
 
 .bare_container {
@@ -281,7 +281,7 @@ input[type="button"] {
   display: inline-block;
   height: 38px;
   padding: 0 30px;
-  color: rgb(139, 136, 136);
+  color: #555;
   text-align: center;
   font-size: 11px;
   font-weight: 600;
@@ -344,8 +344,8 @@ textarea,
 select {
   height: 38px;
   padding: 6px 10px; /* The 6px vertically centers text on FF, ignored by Webkit */
-  background-color: rgb(107, 105, 105);
-  border: 1px solid #000000;
+  background-color: #fff;
+  border: 1px solid #D1D1D1;
   border-radius: 4px;
   box-shadow: none;
   box-sizing: border-box;

@@ -62,7 +62,6 @@ penn_data = {"name": "Pennsylvania",
     "max_lng": -74.707}
 
 
-
 def prepare_vehicles(path="../data/vehicles.csv"):
     vehicles = pd.read_csv(path, sep="\t")
     vehicles["ev_x"] = penn_data["min_lng"] + (vehicles["ev_x"] / 290) * np.abs(penn_data["min_lng"] - penn_data["max_lng"])
@@ -74,6 +73,29 @@ def prep_data(path="../data/solution.csv"):
     location_data["station_x"] = penn_data["min_lng"] + (location_data["station_x"] / 290) * np.abs(penn_data["min_lng"] - penn_data["max_lng"])
     location_data["station_y"] = penn_data["min_lat"] + (location_data["station_y"] / 150) * np.abs(penn_data["min_lat"] - penn_data["max_lat"])
     return location_data
+
+
+def style_results(r):
+    result_in_html = \
+        html.A(
+            [
+                html.Section(
+                    [
+                        html.H2("Station {r['station_ix']}:", className="thumbnail-title"),
+                        html.P(r['cost']),
+                        html.Div(
+                            [
+                                dcc.Graph(id="cost_breakdown_station")
+                            ],
+                            className="article-info-wrapper"
+                            )
+                    ],
+                    className="article-text-wrapper w-clearfix"),
+            ],
+            className="article w-inline-block w-clearfix"
+        )
+    return [result_in_html]
+
 
 location_data = prep_data()
 vehicles = prepare_vehicles()
@@ -91,13 +113,13 @@ layout = dict(
         t=40
     ),
     hovermode="closest",
-    plot_bgcolor="rgb(10,10,10)",
-    paper_bgcolor="rgb(10,10,10)",
+    # plot_bgcolor="rgb(10,10,10)",
+    # paper_bgcolor="rgb(10,10,10)",
     legend=dict(font=dict(size=10), orientation='h'),
     title='Title of the graph',
     mapbox=dict(
         accesstoken=mapbox_access_token,
-        style="light",
+        style="dark",
         center=dict(
             lon=-78.05,
             lat=42.54
@@ -117,7 +139,7 @@ def create_input(param_name, v):
                         id='tooltip_' + param_name,
                         style={"cursor": "pointer"},
                     ),
-                    dcc.Input(id=f'{param_name}_current', type='number', min=0, step=1, value=v, style={'margin-left' : '10px'}),
+                    dcc.Input(id=f'{param_name}_current', type='number', min=0, step=0.0001, value=v, style={'margin-left' : '10px'}),
                 ],
                 className="control_label",
                 style=parameter_style,
@@ -182,15 +204,7 @@ app.layout = html.Div(
                             ),
                         href="http://127.0.0.1:5000/vulture/",
                         ),
-
-
-                        html.A(
-                            html.Button(
-                            "Change default values",
-                            id="change_default",
-                            ),
-                        href="http://127.0.0.1:5001/parameters/",
-                        ),]
+                    ]
                     ),
                 ]
             ),
@@ -381,6 +395,7 @@ app.layout = html.Div(
                                             id="something",
                                             className="pretty_container"
                                         ),
+
                                     ],
                                     id="tripleContainer",
                                 )
@@ -395,7 +410,8 @@ app.layout = html.Div(
                                     [
                                         dcc.Graph(
                                             id='main_map',
-                                        )
+                                        ),
+                                        dcc.Tooltip(id="graph-tooltip"),
                                     ],
                                     id="countGraphContainer2",
                                     className="pretty_container twelve columns"
@@ -417,37 +433,25 @@ app.layout = html.Div(
                     [
                         dcc.Graph(id='cost_breakdown')
                     ],
-                    className='pretty_container seven columns',
+                    className='pretty_container four columns',
                 ),
-                html.Div(
-                    [
-                        dcc.Graph(id='waiting_histogram_graph')
-                    ],
-                    className='pretty_container five columns',
-                ),
-            ],
-            className='row'
-        ),
-        
-        html.Div(
-            [
                 html.Div(
                     [
                         dcc.Graph(id='chargers_graph')
                     ],
-                    className='pretty_container four columns',
+                    className='pretty_container three columns',
                 ),
                 html.Div(
                     [
                         dcc.Graph(id='driving_graph')
                     ],
-                    className='pretty_container four columns',
+                    className='pretty_container three columns',
                 ),
                 html.Div(
                     [
                         dcc.Graph(id='charging_graph')
                     ],
-                    className='pretty_container four columns',
+                    className='pretty_container three columns',
                 ),
             ],
             className='row'
@@ -538,9 +542,9 @@ def make_main_cost_breakdown(new_location_data):
     dc = solution.driving_cost.sum()
     cc = solution.charging_cost.sum()
 
-    cost_types = ['Maintenance', 'Construction', 'Driving cost', 'Charging cost']
+    cost_types = ['Charging cost', 'Maintenance', 'Construction', 'Driving cost']
 
-    cost_totals = [mc, bc, dc, cc]
+    cost_totals = [cc, mc, bc, dc]
 
     traces = [dict(
         type='pie',
@@ -558,6 +562,7 @@ def make_main_cost_breakdown(new_location_data):
     )]
 
     layout_individual['title'] = 'Breakdown of costs'
+    layout_individual['legend'] = dict(yanchor="top", y=0.99, xanchor="left", x=0.85)
 
     figure = dict(data=traces, layout=layout_individual)
     return figure
@@ -579,11 +584,11 @@ def make_aggregate_figure(new_location_data):
             name='Charging cost distribution',
             # histnorm='probability density',
             x=solution['charging_cost'],
-            marker=dict(color='#00ccff'),
+            marker=dict(color=Blues[6]),
             line=dict(
                 shape="spline",
                 smoothing="2",
-                color='#00ccff'
+                color=Blues[2]
             )
         ),
     ]
@@ -613,7 +618,7 @@ def make_aggregate_figure(new_location_data):
             name='Driven distance distribution',
             # histnorm='probability density',
             x=solution['distance'],
-            marker=dict(color='#00ccff'),
+            marker=dict(color=Blues[6]),
             line=dict(
                 shape="spline",
                 smoothing="2"
@@ -645,11 +650,11 @@ def make_aggregate_figure(new_location_data):
             name='Number of chargers distribution',
             # histnorm='probability density',
             x=solution['n_chargers'],
-            marker=dict(color='#00ccff'),
+            marker=dict(color=Blues[6]),
             line=dict(
                 shape="spline",
                 smoothing="2",
-                color='#00ccff'
+                color=Blues[6]
             )
         ),
     ]
@@ -671,31 +676,45 @@ def make_aggregate_figure(new_location_data):
 
     layout_aggregate = copy.deepcopy(layout)
 
-    solution = pd.DataFrame().from_dict(new_location_data)
+    ys_agg = np.loadtxt("../results/best_6.txt")[1::]
+    ys_best = np.loadtxt("../results/pop_fitness_6_agg.txt")[1::]
 
-    xs = np.arange(500)
-    rand_xs = xs + np.random.normal(0, 10, size=xs.shape)
-    ys = 4000000-np.log(10+rand_xs)
+    xs = np.arange(ys_agg.shape[0])
 
     data = [
         dict(
             type='line',
             # mode='lines+markers',
-            name='Simulation cost',
+            name='Best solution cost',
             # histnorm='probability density',
             x=xs,
-            y=ys,
+            y=ys_agg,
             line=dict(
                 shape="spline",
                 smoothing="2",
-                color='#00ccff'
+                color=Blues[2]
+            )
+        ),
+        dict(
+            type='line',
+            # mode='lines+markers',
+            name='Population mean cost',
+            # histnorm='probability density',
+            x=xs,
+            y=ys_best,
+            line=dict(
+                shape="spline",
+                smoothing="2",
+                color=Blues[4]
             )
         ),
     ]
 
     layout_aggregate['title'] = 'Simulation cost'
     layout_aggregate['xaxis'] = {'title' : 'Generation', 'range' : [0, np.max(xs)]}
-    layout_aggregate['margin'] = dict(l=45, b=35)
+    layout_aggregate['yaxis'] = {'range' : [np.min(ys_agg) - 1000, np.max(ys_best)]}
+    layout_aggregate['margin'] = dict(l=45, b=40)
+    layout_aggregate['legend'] = dict(yanchor="top", y=0.99, xanchor="left", x=0.65)
 
     figure = dict(data=data, layout=layout_aggregate)
     return figure
@@ -712,11 +731,11 @@ def make_map_figure(new_location_data):
             lon=vehicles['ev_x'].values,
             mode='markers',
             marker=go.scattermapbox.Marker(
-                size=5,
-                color="lightgrey",
+                size=10,
+                color="black",
                 opacity=1
             ),
-            showlegend=False
+            showlegend=False,
         ))
 
 
@@ -728,8 +747,8 @@ def make_map_figure(new_location_data):
             lon=new_location_data['station_x'].values,
             mode='markers',
             marker=go.scattermapbox.Marker(
-                size=10,
-                color="#00ccff",
+                size=12,
+                color=Blues[4],
                 opacity=1
             ),
             text=new_location_data['station_cost'].values,
@@ -742,7 +761,7 @@ def make_map_figure(new_location_data):
         margin=dict(t=0, b=0, l=0, r=0),
         height=900,
         mapbox=dict(
-            style='dark',
+            style='light',
             accesstoken=mapbox_access_token,
             bearing=0,
             center=dict(
@@ -755,6 +774,100 @@ def make_map_figure(new_location_data):
     )
 
     return fig
+
+
+@app.callback(Output('cost_breakdown_station', 'figure'),
+              [Input('new_location_data', 'data')])
+def make_main_cost_breakdown(new_location_data):
+
+    layout_individual = copy.deepcopy(layout)
+
+    solution = pd.DataFrame().from_dict(new_location_data)
+
+    mc = solution.n_chargers.sum() * maintenance_fee_per_charger
+    bc = solution.shape[0] * construction_cost_per_station
+    dc = solution.driving_cost.sum()
+    cc = solution.charging_cost.sum()
+
+    cost_types = ['Charging cost', 'Maintenance', 'Construction', 'Driving cost']
+
+    cost_totals = [cc, mc, bc, dc]
+
+    traces = [dict(
+        type='pie',
+        labels=cost_types,
+        values=cost_totals,
+        name='Cost breakdown',
+        text=['', '', ''],
+        hoverinfo="value+text+percent",
+        textinfo="label+percent+name",
+        hole=0.5,
+        marker=dict(
+            colors=[Blues[8], Blues[6], Blues[4], Blues[2]]
+        ),
+        # domain={"x": [0.1, 0.9], 'y':[0.1, 0.9]},
+    )]
+
+    layout_individual['title'] = 'Breakdown of costs'
+    layout_individual['legend'] = dict(yanchor="top", y=0.99, xanchor="left", x=0.85)
+
+    figure = dict(data=traces, layout=layout_individual)
+    return figure
+
+
+@app.callback(
+    Output("graph-tooltip", "show"),
+    Output("graph-tooltip", "bbox"),
+    Output("graph-tooltip", "children"),
+    [Input("main_map", "hoverData"), Input("new_location_data", "data")],
+)
+def display_hover(hoverData, new_location_data):
+
+    if hoverData is None:
+        return False, no_update, no_update
+
+    layout_individual = copy.deepcopy(layout)
+    
+
+    pt = hoverData["points"][0]
+    bbox = pt["bbox"]
+    num = pt["pointNumber"]
+
+    info = new_location_data[num]
+
+    mc = info["n_chargers"] * maintenance_fee_per_charger
+    bc = construction_cost_per_station
+    dc = info["driving_cost"]
+    cc = info["charging_cost"]
+
+    cost_types = ['Charging cost', 'Maintenance', 'Construction', 'Driving cost']
+
+    cost_totals = [cc, mc, bc, dc]
+    info['cost'] = "Station cost ${c}".format(c=round(sum(cost_totals),2))
+
+    traces = dict(
+        type='pie',
+        labels=cost_types,
+        values=cost_totals,
+        name='Cost breakdown',
+        text=['', '', ''],
+        hoverinfo="value+text+percent",
+        textinfo="label+percent+name",
+        hole=0.5,
+        marker=dict(
+            colors=[Blues[8], Blues[6], Blues[4], Blues[2]]
+        ),
+        # domain={"x": [0.1, 0.9], 'y':[0.1, 0.9]},
+    )
+
+    layout_individual['title'] = 'Breakdown of costs'
+    layout_individual['legend'] = dict(yanchor="top", y=0.99, xanchor="left", x=0.85)
+
+    figure = dict(data=traces, layout=layout_individual)
+
+    children = style_results(info, figure)
+
+    return True, bbox, children
 
 
 # Main
