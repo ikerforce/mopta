@@ -44,7 +44,7 @@ tooltip_style = {"font-size": "80%", 'width': '300px', 'border':'solid black 1px
 parameter_style = {"margin-top": "2px", "margin-left" : "40px"}
 
 # Logo formatting
-logo_filename = os.getcwd() + '/images/VU_logo.png' # replace with your own image
+logo_filename = os.getcwd() + '/images/vulture_logo.jpeg' # replace with your own image
 encoded_logo= base64.b64encode(open(logo_filename, 'rb').read())
 
 driving_cost_per_mile = 0.041
@@ -91,8 +91,8 @@ layout = dict(
         t=40
     ),
     hovermode="closest",
-    plot_bgcolor="#F9F9F9",
-    paper_bgcolor="#F9F9F9",
+    plot_bgcolor="rgb(10,10,10)",
+    paper_bgcolor="rgb(10,10,10)",
     legend=dict(font=dict(size=10), orientation='h'),
     title='Title of the graph',
     mapbox=dict(
@@ -136,6 +136,7 @@ def create_input(param_name, v):
 app.layout = html.Div(
     [
         dcc.Store(id='new_location_data'),
+        dcc.Store(id='parameters'),
         html.Div(
             [
                 html.Div(
@@ -153,7 +154,7 @@ app.layout = html.Div(
                 ),
                 html.Img(
                     src='data:image/jpeg;base64,{}'.format(encoded_logo.decode()),
-                    className='two columns',
+                    className='one column',
                 ),
                 html.A(
                     html.Button(
@@ -498,6 +499,22 @@ def update_n_stations_text(new_location_data):
     return str(solution.n_chargers.sum())
 
 
+@app.callback(Output('parameters', 'data'),
+            [Input("max_chargers", "value")
+                , Input("max_stations", "value")
+                , Input("max_range", "value")
+                , Input("mean_range", "value")
+                , Input("build_cost", "value")
+                , Input("maintenance_cost", "value")
+                , Input("charging_cost", "value")
+                , Input("driving_cost", "value")])
+def update_n_stations_text(max_chargers, max_stations, max_range, mean_range, build_cost, maintenance_cost, charging_cost, driving_cost):
+
+    params = dict(zip("max_chargers, max_stations, max_range, mean_range, build_cost, maintenance_cost, charging_cost, driving_cost".split(", "), [max_chargers, max_stations, max_range, mean_range, build_cost, maintenance_cost, charging_cost, driving_cost]))
+
+    return params
+
+
 @app.callback(Output('avg_chargers_text', 'children'),
               [Input('new_location_data', 'data')])
 def update_n_stations_text(new_location_data):
@@ -562,10 +579,11 @@ def make_aggregate_figure(new_location_data):
             name='Charging cost distribution',
             # histnorm='probability density',
             x=solution['charging_cost'],
+            marker=dict(color='#00ccff'),
             line=dict(
                 shape="spline",
                 smoothing="2",
-                color='#F9ADA0'
+                color='#00ccff'
             )
         ),
     ]
@@ -595,10 +613,10 @@ def make_aggregate_figure(new_location_data):
             name='Driven distance distribution',
             # histnorm='probability density',
             x=solution['distance'],
+            marker=dict(color='#00ccff'),
             line=dict(
                 shape="spline",
-                smoothing="2",
-                color='#F9ADA0'
+                smoothing="2"
             )
         ),
     ]
@@ -627,10 +645,11 @@ def make_aggregate_figure(new_location_data):
             name='Number of chargers distribution',
             # histnorm='probability density',
             x=solution['n_chargers'],
+            marker=dict(color='#00ccff'),
             line=dict(
                 shape="spline",
                 smoothing="2",
-                color='#F9ADA0'
+                color='#00ccff'
             )
         ),
     ]
@@ -655,8 +674,8 @@ def make_aggregate_figure(new_location_data):
     solution = pd.DataFrame().from_dict(new_location_data)
 
     xs = np.arange(500)
-    rand_xs = xs + np.random.normal(0, 1, size=xs.shape)
-    ys = 400-np.log(10+rand_xs)
+    rand_xs = xs + np.random.normal(0, 10, size=xs.shape)
+    ys = 4000000-np.log(10+rand_xs)
 
     data = [
         dict(
@@ -669,14 +688,13 @@ def make_aggregate_figure(new_location_data):
             line=dict(
                 shape="spline",
                 smoothing="2",
-                color='#F9ADA0'
+                color='#00ccff'
             )
         ),
     ]
 
     layout_aggregate['title'] = 'Simulation cost'
     layout_aggregate['xaxis'] = {'title' : 'Generation', 'range' : [0, np.max(xs)]}
-    layout_aggregate['yaxis'] = {'title' : 'Cost'}
     layout_aggregate['margin'] = dict(l=45, b=35)
 
     figure = dict(data=data, layout=layout_aggregate)
@@ -695,7 +713,7 @@ def make_map_figure(new_location_data):
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=5,
-                color="black",
+                color="lightgrey",
                 opacity=1
             ),
             showlegend=False
@@ -711,7 +729,7 @@ def make_map_figure(new_location_data):
             mode='markers',
             marker=go.scattermapbox.Marker(
                 size=10,
-                color="#80B767",
+                color="#00ccff",
                 opacity=1
             ),
             text=new_location_data['station_cost'].values,
@@ -724,7 +742,7 @@ def make_map_figure(new_location_data):
         margin=dict(t=0, b=0, l=0, r=0),
         height=900,
         mapbox=dict(
-            style='basic',
+            style='dark',
             accesstoken=mapbox_access_token,
             bearing=0,
             center=dict(
