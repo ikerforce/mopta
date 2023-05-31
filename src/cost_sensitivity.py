@@ -23,7 +23,6 @@ from scipy.stats import truncnorm
 import time
 from sklearn.neighbors import BallTree
 import os
-import ray
 
 car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv')
 car_data = np.array(car_data)
@@ -47,7 +46,7 @@ no_assignment_penalty = 5000
 exceed_range_penalty = 5000
 
 # define the population
-options = {'c1': 0.07, 'c2': 0.13, 'w':0.85}
+options = {'c1': 0.05, 'c2': 0.14, 'w':0.83}
 
 # uniform distribution for generating random points in the search space
 ud_x = uniform(0, x_max)
@@ -314,73 +313,6 @@ def get_sensitivity_analysis(cost_type:str, cs):
             cs[cost] = np.tile(cs[cost][2], cs[cost].shape[0]) 
     return cs
 
-
-@ray.remote
-def individual_rep(cost_parameters):
-    bests = []
-    local_bests = []
-    mean_prop = []
-    pop_fitness = []
-    pop_fitness_no_penalty = []
-    # print("Generating population...")
-    pop_size = 1
-    car_anchors = np.random.choice(list(range(car_data.shape[0])), n_individual)
-    car_data_anchor = car_data[car_anchors]
-    population = gen_pop(pop_size, car_data_anchor)
-    generations = 5
-    K = 30
-    rand = False
-    global_best_stations = car_data_anchor #np.array([[ud_x.rvs(1)[0],ud_y.rvs(1)[0]] for i in range(n_individual)]) # position of every station in the global best
-    # global best score
-    global_best_score = 1000000000
-    global_best_station_counter, global_best_index = None,None
-    global_best_assignments = None
-    local_best_scores = [1e9 for i in range(pop_size)] # storing local best scores (not positions)
-    start = time.time()
-    particle_movement = []
-    for gen in range(generations):
-        # start_eval = time.time()
-        global_best_score, global_best_stations, global_best_station_counter, global_best_index, global_best_assignments, local_best_scores, population_fitness, population_fitness_no_penalty = evaluate(population, car_data, global_best_score, global_best_stations, local_best_scores, K, global_best_station_counter, global_best_index, global_best_assignments, gen, cost_parameters)
-        # end_eval = time.time()
-        # print("Eval time {:.2f}".format(end_eval - start_eval))
-        bests.append(global_best_score)
-        local_bests.append(np.mean(local_best_scores))
-        pop_fitness.append(population_fitness)
-        pop_fitness_no_penalty.append(population_fitness_no_penalty)
-        # if gen % 100 == 0:
-        #     print(gen, np.mean(pop_fitness_no_penalty))
-          
-        if not rand:
-          # start_update = time.time()
-            for ind in population:
-                population[ind].update_positions(global_best_stations, [gen, generations])
-        else:
-            population = gen_pop(pop_size, car_data_anchor)
-        # end_update = time.time()
-        # print("Update time {:.2f}".format(end_update - start_update))
-        
-        props = []
-        gen_movement = []
-        for i in range(pop_size):
-            props.append(population[i].assignment_proportion)
-            gen_movement.append(population[i].positions)
-        
-        if not rand: 
-            mean_prop.append(np.mean(props))
-        particle_movement.append(gen_movement)
-        
-        
-    num_chargers = [global_best_station_counter[i] for i in global_best_station_counter if global_best_station_counter[i] > 0]    
-    results = dict(temp_global_bests_mean_sensitivity = global_best_score,
-    temp_global_best_positions_mean_sensitivity = global_best_stations,
-    temp_number_of_stations = int(len(num_chargers)),
-    temp_number_of_chargers = (num_chargers))
-    
-    print('Rep {} complete'.format(reps))
-    
-    return results
-
-
 drivingCost_sensitivityAnalysis = get_sensitivity_analysis('drivingCost', costs.copy())
 chargingCost_sensitivityAnalysis = get_sensitivity_analysis('chargingCost', costs.copy())
 constructionCost_sensitivityAnalysis = get_sensitivity_analysis('constructionCost', costs.copy())
@@ -438,11 +370,68 @@ for cost_parameters in cost_parameters_collection:
     temp_number_of_chargers = []
     temp_unmet_demand = []
     
+    for reps in range(10):
+        bests = []
+        local_bests = []
+        mean_prop = []
+        pop_fitness = []
+        pop_fitness_no_penalty = []
+        # print("Generating population...")
+        pop_size = 1
+        car_anchors = np.random.choice(list(range(car_data.shape[0])), n_individual)
+        car_data_anchor = car_data[car_anchors]
+        population = gen_pop(pop_size, car_data_anchor)
+        generations = 5
+        K = 30
+        rand = False
+        global_best_stations = car_data_anchor #np.array([[ud_x.rvs(1)[0],ud_y.rvs(1)[0]] for i in range(n_individual)]) # position of every station in the global best
+        # global best score
+        global_best_score = 1000000000
+        global_best_station_counter, global_best_index = None,None
+        global_best_assignments = None
+        local_best_scores = [1e9 for i in range(pop_size)] # storing local best scores (not positions)
+        start = time.time()
+        particle_movement = []
+        for gen in range(generations):
+            # start_eval = time.time()
+            global_best_score, global_best_stations, global_best_station_counter, global_best_index, global_best_assignments, local_best_scores, population_fitness, population_fitness_no_penalty = evaluate(population, car_data, global_best_score, global_best_stations, local_best_scores, K, global_best_station_counter, global_best_index, global_best_assignments, gen, cost_parameters)
+            # end_eval = time.time()
+            # print("Eval time {:.2f}".format(end_eval - start_eval))
+            bests.append(global_best_score)
+            local_bests.append(np.mean(local_best_scores))
+            pop_fitness.append(population_fitness)
+            pop_fitness_no_penalty.append(population_fitness_no_penalty)
+            # if gen % 100 == 0:
+            #     print(gen, np.mean(pop_fitness_no_penalty))
+              
+            if not rand:
+              # start_update = time.time()
+                for ind in population:
+                    population[ind].update_positions(global_best_stations, [gen, generations])
+            else:
+                population = gen_pop(pop_size, car_data_anchor)
+            # end_update = time.time()
+            # print("Update time {:.2f}".format(end_update - start_update))
+            
+            props = []
+            gen_movement = []
+            for i in range(pop_size):
+                props.append(population[i].assignment_proportion)
+                gen_movement.append(population[i].positions)
+            
+            if not rand: 
+                mean_prop.append(np.mean(props))
+            particle_movement.append(gen_movement)
+            
+            
+        num_chargers = [global_best_station_counter[i] for i in global_best_station_counter if global_best_station_counter[i] > 0]    
+        temp_global_bests_mean_sensitivity = global_best_score,
+        temp_global_best_positions_mean_sensitivity = global_best_stations,
+        temp_number_of_stations = int(len(num_chargers)),
+        temp_number_of_chargers = (num_chargers)
         
-    results = ray.get([individual_rep.remote(cost_parameters) for rep in range(10)])
+        print('Rep {} complete'.format(reps))
     
-    print(results)
-
         
         # print("{:.3f} seconds".format(time.time()-start))
         # print("Overall improvement of {:.2f}%".format(1-np.mean(pop_fitness[-1])/np.mean(pop_fitness[0])))

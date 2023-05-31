@@ -16,7 +16,7 @@ import time
 from sklearn.neighbors import BallTree
 import os
 
-car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv')
+car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv', header=None)
 car_data = np.array(car_data)
 
 
@@ -127,7 +127,7 @@ def get_samples(min_range=min_range,
     pd = truncnorm((min_range - mean_range) / sd_range, 
                    (max_range - mean_range) / sd_range, 
                    loc=mean_range, scale=sd_range)
-    samples = pd.rvs(size=(car_data.shape[0], 1000))
+    samples = pd.rvs(size=(car_data.shape[0], 10))
     samples_aggregated = np.mean(samples, axis=1)
 
     return samples_aggregated
@@ -157,7 +157,7 @@ def KNN(population, K, gen, local_best_scores):
         # get visiting probabilities
         c = compute_visiting_probability(ranges)
         # number of vehicles per batch
-        v_b = np.round(c * 10, 0)
+        v_b = np.ceil(c * 10, 0)
         # exclude vehicles with a low probability of charging
         exclusion = 0 # 0.2*10
       
@@ -279,8 +279,8 @@ def evaluate(population, vehicles, global_best_score, global_best_stations, loca
     
     return global_best_score, global_best_stations, global_best_station_counter, global_best_index, global_best_assignments, local_best_scores, population_fitness, population_fitness_no_penalty
 
-
-for stress_demand in [1, 5, 10, 20, 30, 40, 50]: 
+#%%
+for stress_demand in [0.01, 0.1, 1, 5, 10, 20, 30, 40, 50]: 
     
     print("Swarming for the {} percentile of demand".format(stress_demand))
     
@@ -312,7 +312,7 @@ for stress_demand in [1, 5, 10, 20, 30, 40, 50]:
     # ranges sampled
     samples = get_samples()
     rng = Ranges(ranges=samples)
-    
+
     global_bests_mean_sensitivity = []
     global_best_positions_mean_sensitivity = []
     number_of_stations = []
