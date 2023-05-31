@@ -86,7 +86,7 @@ ev_locations['loc_ix'] = np.array(range(ev_locations.shape[0]))
 
 station_locations = pd.DataFrame(generate_random_stations(), columns=['station_ix', 'station_x', 'station_y'])
 
-ev_and_station_locations = assign_closest(ev_locations, station_locations)
+ev_and_station_locations =  solve_with_kmeans(ev_locations, n_stations=600)
 
 ev_and_station_locations = repeat_rows(ev_and_station_locations, times_to_repeat=10)
 

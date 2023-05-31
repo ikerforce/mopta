@@ -23,10 +23,10 @@ from scipy.stats import truncnorm
 import time
 from sklearn.neighbors import BallTree
 import os
+from tqdm import tqdm
 import ray
 
-car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv')
-car_data = np.array(car_data)
+car_data = np.loadtxt('data/MOPTA2023_car_locations.csv', delimiter=',')
 
 
 n_individual = 600 # stations in an individual
@@ -163,7 +163,7 @@ def KNN(population, K, gen, local_best_scores, cost_parameters):
     exceed_range_penalty = cost_parameters['exceedRangePenalty']
     
     S = 16
-    for individual in range(pop_size):
+    for individual in list(population.keys()):
           
         if gen % 100000 == 0:
             ranges = get_samples() # rng.ranges#
@@ -269,7 +269,7 @@ def evaluate(population, vehicles, global_best_score, global_best_stations, loca
     
     population_fitness = []
     population_fitness_no_penalty = []
-    for i in range(pop_size):
+    for i in list(population.keys()):
         population_fitness.append(population[i].cost)
         population_fitness_no_penalty.append(population[i].total_cost_no_penalty)
     
@@ -323,11 +323,11 @@ def individual_rep(cost_parameters):
     pop_fitness = []
     pop_fitness_no_penalty = []
     # print("Generating population...")
-    pop_size = 1
+    pop_size = 50
     car_anchors = np.random.choice(list(range(car_data.shape[0])), n_individual)
     car_data_anchor = car_data[car_anchors]
     population = gen_pop(pop_size, car_data_anchor)
-    generations = 5
+    generations = 500
     K = 30
     rand = False
     global_best_stations = car_data_anchor #np.array([[ud_x.rvs(1)[0],ud_y.rvs(1)[0]] for i in range(n_individual)]) # position of every station in the global best
@@ -352,7 +352,7 @@ def individual_rep(cost_parameters):
           
         if not rand:
           # start_update = time.time()
-            for ind in population:
+            for ind in list(population.keys()):
                 population[ind].update_positions(global_best_stations, [gen, generations])
         else:
             population = gen_pop(pop_size, car_data_anchor)
@@ -371,97 +371,93 @@ def individual_rep(cost_parameters):
         
         
     num_chargers = [global_best_station_counter[i] for i in global_best_station_counter if global_best_station_counter[i] > 0]    
-    results = dict(temp_global_bests_mean_sensitivity = global_best_score,
+    temp_global_bests_mean_sensitivity = global_best_score,
     temp_global_best_positions_mean_sensitivity = global_best_stations,
     temp_number_of_stations = int(len(num_chargers)),
-    temp_number_of_chargers = (num_chargers))
+    temp_number_of_chargers = (num_chargers)
     
-    print('Rep {} complete'.format(reps))
-    
-    return results
+    return temp_global_bests_mean_sensitivity#, temp_global_best_positions_mean_sensitivity, temp_number_of_stations, temp_number_of_chargers
 
 
-drivingCost_sensitivityAnalysis = get_sensitivity_analysis('drivingCost', costs.copy())
-chargingCost_sensitivityAnalysis = get_sensitivity_analysis('chargingCost', costs.copy())
-constructionCost_sensitivityAnalysis = get_sensitivity_analysis('constructionCost', costs.copy())
-maintenanceCost_sensitivityAnalysis = get_sensitivity_analysis('maintenanceCost', costs.copy())
+analysis = dict(drivingCost_sensitivityAnalysis = get_sensitivity_analysis('drivingCost', costs.copy()),
+            chargingCost_sensitivityAnalysis = get_sensitivity_analysis('chargingCost', costs.copy()),
+            constructionCost_sensitivityAnalysis = get_sensitivity_analysis('constructionCost', costs.copy()),
+            maintenanceCost_sensitivityAnalysis = get_sensitivity_analysis('maintenanceCost', costs.copy()))
 
+for current_analysis in list(analysis.keys()):
 
-cost_analysis_data = constructionCost_sensitivityAnalysis
+    cost_analysis_data = analysis[current_analysis]
 
-cost_parameters_collection = []
-for i in range(len(scenarios)):
-    cost_parameters_collection.append({j: cost_analysis_data[j][i] for j in cost_analysis_data})
+    cost_parameters_collection = []
+    for i in range(len(scenarios)):
+        cost_parameters_collection.append({j: cost_analysis_data[j][i] for j in cost_analysis_data})
 
-cost_group = 0
+    cost_group = 0
 
-for cost_parameters in cost_parameters_collection: 
-    
-    print("Swarming for costs {}".format(cost_parameters))
-    
-    newpath = '/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/CostSensitivity/cost_group_'+str(cost_group) 
-    if not os.path.exists(newpath):
-        os.makedirs(newpath)
-    # get sample of vehicle ranges
-    min_range = 20
-    max_range = 250
-    mean_range = 100
-    sd_range = 5
-    
-    # sample ranges for each vehicle
-    def get_samples(min_range=min_range,
-                    max_range=max_range,
-                    mean_range=mean_range,
-                    sd_range=sd_range):
-        pd = truncnorm((min_range - mean_range) / sd_range, 
-                       (max_range - mean_range) / sd_range, 
-                       loc=mean_range, scale=sd_range)
-        samples = pd.rvs(size=(car_data.shape[0], 10))
-        samples_mean = np.mean(samples, axis=1)
-        pctile = np.percentile(samples_mean, 20)
-        samples_aggregated = np.tile(pctile, (car_data.shape[0],))
-    
-        return samples_aggregated
-    
-    # ranges sampled
-    samples = get_samples()
-    rng = Ranges(ranges=samples)
-    
-    global_bests_mean_sensitivity = []
-    global_best_positions_mean_sensitivity = []
-    number_of_stations = []
-    number_of_chargers = []
-    
-    temp_global_bests_mean_sensitivity = []
-    temp_global_best_positions_mean_sensitivity = []
-    temp_number_of_stations = []
-    temp_number_of_chargers = []
-    temp_unmet_demand = []
-    
+    for cost_parameters in tqdm(cost_parameters_collection): 
         
-    results = ray.get([individual_rep.remote(cost_parameters) for rep in range(10)])
-    
-    print(results)
-
+        print("Swarming for costs {}".format(cost_parameters))
         
-        # print("{:.3f} seconds".format(time.time()-start))
-        # print("Overall improvement of {:.2f}%".format(1-np.mean(pop_fitness[-1])/np.mean(pop_fitness[0])))
-        # print('Best result: {:.2f}'.format(global_best_score))
-    
-    global_bests_mean_sensitivity = temp_global_bests_mean_sensitivity
-    global_best_positions_mean_sensitivity = temp_global_best_positions_mean_sensitivity
-    number_of_stations = temp_number_of_stations
-    number_of_chargers = temp_number_of_chargers
-    
-    total_chargers_list = []
-    for solution in range(len(number_of_chargers)-1):
-        sol = np.ceil(np.array(number_of_chargers[solution]) / 2)
-        total_chargers_list.append(int(sum(sol)))
-    
-    
-    np.savetxt(newpath+'/best_scores.txt', global_bests_mean_sensitivity)
-    # np.savetxt(newpath+'/best_positions.txt', global_best_positions_mean_sensitivity[:-1])
-    np.savetxt(newpath+'/number_of_stations.txt', number_of_stations)
-    np.savetxt(newpath+'/number_of_chargers.txt', total_chargers_list)
-    
-    cost_group += 1
+        newpath = 'CostSensitivity/cost_group_'+str(cost_group) 
+        if not os.path.exists(newpath):
+            os.makedirs(newpath)
+        # get sample of vehicle ranges
+        min_range = 20
+        max_range = 250
+        mean_range = 100
+        sd_range = 5
+        
+        # sample ranges for each vehicle
+        def get_samples(min_range=min_range,
+                        max_range=max_range,
+                        mean_range=mean_range,
+                        sd_range=sd_range):
+            pd = truncnorm((min_range - mean_range) / sd_range, 
+                        (max_range - mean_range) / sd_range, 
+                        loc=mean_range, scale=sd_range)
+            samples = pd.rvs(size=(car_data.shape[0], 10))
+            samples_mean = np.mean(samples, axis=1)
+            pctile = np.percentile(samples_mean, 20)
+            samples_aggregated = np.tile(pctile, (car_data.shape[0],))
+        
+            return samples_aggregated
+        
+        # ranges sampled
+        samples = get_samples()
+        rng = Ranges(ranges=samples)
+        
+        global_bests_mean_sensitivity = []
+        global_best_positions_mean_sensitivity = []
+        number_of_stations = []
+        number_of_chargers = []
+        
+        temp_global_bests_mean_sensitivity = []
+        temp_global_best_positions_mean_sensitivity = []
+        temp_number_of_stations = []
+        temp_number_of_chargers = []
+        temp_unmet_demand = []
+        
+            
+        temp_global_bests_mean_sensitivity = ray.get([individual_rep.remote(cost_parameters) for rep in range(10)])
+        
+            # print("{:.3f} seconds".format(time.time()-start))
+            # print("Overall improvement of {:.2f}%".format(1-np.mean(pop_fitness[-1])/np.mean(pop_fitness[0])))
+            # print('Best result: {:.2f}'.format(global_best_score))
+        
+        global_bests_mean_sensitivity = temp_global_bests_mean_sensitivity
+        #global_best_positions_mean_sensitivity = temp_global_best_positions_mean_sensitivity
+        #number_of_stations = temp_number_of_stations
+        #number_of_chargers = temp_number_of_chargers
+        
+        #total_chargers_list = []
+        #for solution in range(len(number_of_chargers)-1):
+        #    sol = np.ceil(np.array(number_of_chargers[solution]) / 2)
+        #    total_chargers_list.append(int(sum(sol)))
+        
+        
+        np.savetxt(newpath + f'/best_scores_{current_analysis}.txt', global_bests_mean_sensitivity)
+        # np.savetxt(newpath+'/best_positions.txt', global_best_positions_mean_sensitivity[:-1])
+        #np.savetxt(newpath+'/number_of_stations.txt', number_of_stations)
+        #np.savetxt(newpath+'/number_of_chargers.txt', total_chargers_list)
+        
+        cost_group += 1
