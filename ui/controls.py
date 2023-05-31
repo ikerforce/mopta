@@ -1,8 +1,5 @@
 TOOLTIP_INFO = {
-                'service_level_slider' : {'caption' : 'Select the reduction of length of stay', 'description' : """This percentage determines the improvement of the current length 
-                                                                                                                    of stay in the departments selected in the next dropdown menu. 
-                                                                                                                    For example a 10% improvement means that the length of stay is 
-                                                                                                                    10% shorter than the default value."""}
+                'service_level_slider' : {'caption' : 'Select the service level', 'description' : """This value determines the percentage of times a car will find a charger available."""}
                 , 'max_chargers': {'caption' : 'Maximum chargers', 'description' : 'Maximum number of chargers per station.'}
                 , 'max_stations': {'caption' : 'Number of stations', 'description' : 'Maximum number of permitted stations.'}
                 , 'max_range': {'caption' : 'EV range', 'description' : 'The maximum range for the Electric Vehicles.'}
