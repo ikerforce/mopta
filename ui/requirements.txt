@@ -1,0 +1,10 @@
+dash=2
+scipy
+matplotlib
+pandas
+requests
+flask
+dash-renderer
+dash-html-components
+dash-core-components
+dash-bootstrap-components
