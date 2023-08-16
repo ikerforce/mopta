@@ -258,6 +258,7 @@ app.layout = html.Div(
                                 html.Button(
                                 "Run simulation",
                                 id="run_simulation",
+                                n_clicks=0
                                 ),
                             ),
 
@@ -266,10 +267,11 @@ app.layout = html.Div(
                                 html.Button(
                                 "Refresh",
                                 id="refresh_simulation",
+                                n_clicks=0
                                 ),
                             ),
                         ]),
-
+                        html.Div(id='simulation-status', children=''),
                         html.Div(
                             [
                                 dcc.Graph(id='simulation_cost')
@@ -465,11 +467,40 @@ app.layout = html.Div(
 )
 
 
+# create_input("max_chargers", 8),
+# create_input("max_stations", 600),
+# create_input("max_range", 250),
+# create_input("mean_range", 100),
+# create_input("build_cost", 5000),
+# create_input("maintenance_cost", 500),
+# create_input("charging_cost", 0.0388),
+# create_input("driving_cost", 0.041),
+
+@app.callback(
+    Output('simulation-status', 'children'),
+    Input('run_simulation', 'n_clicks'),
+    [State("max_chargers_current", 'value'),
+    State("max_stations_current", 'value'),
+    State("max_range_current", 'value'),
+    State("mean_range_current", 'value'),
+    State("build_cost_current", 'value'),
+    State("maintenance_cost_current", 'value'),
+    State("charging_cost_current", 'value'),
+    State("driving_cost_current", 'value'),
+    State("service_level_slider", "value")]
+)
+def update_output(n_clicks, max_chargers_current, max_stations_current, max_range_current, mean_range_current, build_cost_current, maintenance_cost_current, charging_cost_current, driving_cost_current, service_level):
+    if n_clicks > 0:
+        os.system(f"/home/ikerforce/anaconda3/envs/mopta/bin/python ../src/PSO_V2.py --max_chargers {max_chargers_current} --max_stations {max_stations_current} --max_range {max_range_current} --mean_range {mean_range_current} --construction_cost {build_cost_current} --maintenance_cost {maintenance_cost_current} --charging_cost {charging_cost_current} --driving_cost {driving_cost_current} --service_level {service_level}")
+        return 'The new simulation is running'
+    else:
+        return ''
 
 
 @app.callback(Output('new_location_data', 'data'),
-            [Input('service_level_slider', 'value'), Input('run_simulation', 'n_clicks'), ])
-def update_new_location_data(service_level_slider, n_clicks):
+            [Input('run_simulation', 'n_clicks')])
+def update_new_location_data(n_clicks):
+    print('SOMETHING')
 
     location_data = prep_data().to_dict(orient="records")
 
@@ -671,13 +702,20 @@ def make_aggregate_figure(new_location_data):
 
 # Selectors, main graph -> aggregate graph
 @app.callback(Output('simulation_cost', 'figure'),
-              [Input('new_location_data', 'data')])
-def make_aggregate_figure(new_location_data):
+              Input('refresh_simulation', 'n_clicks'))
+def make_aggregate_figure(n_clicks):
 
     layout_aggregate = copy.deepcopy(layout)
 
-    ys_agg = np.loadtxt("../results/best_6.txt")[1::]
-    ys_best = np.loadtxt("../results/pop_fitness_6_agg.txt")[1::]
+    print('hfhdjfhkadsf', n_clicks)
+
+    if n_clicks > 0:
+        fitness = np.loadtxt("../results/gen_fitness.csv", delimiter="\t")
+        ys_agg = fitness[:,1]
+        ys_best = fitness[:,2]
+    else:
+        ys_agg = np.loadtxt("../results/best_6.txt")[1::]
+        ys_best = np.loadtxt("../results/pop_fitness_6_agg.txt")[1::]
 
     xs = np.arange(ys_agg.shape[0])
 
@@ -685,7 +723,7 @@ def make_aggregate_figure(new_location_data):
         dict(
             type='line',
             # mode='lines+markers',
-            name='Best solution cost',
+            name='Mean population cost',
             # histnorm='probability density',
             x=xs,
             y=ys_agg,
@@ -698,7 +736,7 @@ def make_aggregate_figure(new_location_data):
         dict(
             type='line',
             # mode='lines+markers',
-            name='Population mean cost',
+            name='Best population cost',
             # histnorm='probability density',
             x=xs,
             y=ys_best,
@@ -711,8 +749,8 @@ def make_aggregate_figure(new_location_data):
     ]
 
     layout_aggregate['title'] = 'Simulation cost'
-    layout_aggregate['xaxis'] = {'title' : 'Generation', 'range' : [0, np.max(xs)]}
-    layout_aggregate['yaxis'] = {'range' : [np.min(ys_agg) - 1000, np.max(ys_best)]}
+    layout_aggregate['xaxis'] = {'title' : 'Generation', 'range' : [0, 50]}
+    layout_aggregate['yaxis'] = {'range' : [np.min(ys_best)-1000, np.max(ys_agg)+1000]}
     layout_aggregate['margin'] = dict(l=45, b=40)
     layout_aggregate['legend'] = dict(yanchor="top", y=0.99, xanchor="left", x=0.65)
 
