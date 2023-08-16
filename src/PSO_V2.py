@@ -16,23 +16,69 @@ import time
 from sklearn.neighbors import BallTree
 import os
 import random
-import os
+import argparse
 
-car_data = pd.read_csv('/Users/fergushathorn/Documents/MOPTA/mopta/mopta/data/MOPTA2023_car_locations.csv', header=None)
+parser = argparse.ArgumentParser()
+parser.add_argument("--max_chargers", help="some message")
+parser.add_argument("--max_stations", help="some message")
+parser.add_argument("--max_range", help="some message")
+parser.add_argument("--mean_range", help="some message")
+parser.add_argument("--construction_cost", help="some message")
+parser.add_argument("--maintenance_cost", help="some message")
+parser.add_argument("--charging_cost", help="some message")
+parser.add_argument("--driving_cost", help="some message")
+parser.add_argument("--service_level", help="some message")
+args = parser.parse_args()
+
+car_data = pd.read_csv('/home/ikerforce/Documents/Proyectos/mopta/data/MOPTA2023_car_locations.csv', header=None)
 car_data = np.array(car_data)
 
-n_individual = 600 # stations in an individual
+if args.max_chargers is not None:
+    max_chargers = int(args.max_chargers)
+else:
+    max_chargers = 8
+if args.max_stations is not None:
+    n_individual = int(args.max_stations)
+else:
+    n_individual = 600 # stations in an individual
 pop_size = 10 # number of individuals
 generations = 50
 x_max = 290 # size of search space on x axis
 y_max = 150 # size of search space on y axis
-max_chargers = 8 # max number of chargers at a station
 
 # cost parameters
-driving_cost_per_mile = 0.041 * 10000
-charging_cost_per_mile = 0.0388
-construction_cost_per_station = 5000
-maintenance_fee_per_charger = 500
+if args.driving_cost is not None:
+    driving_cost_per_mile = float(args.driving_cost)
+else:
+    driving_cost_per_mile = 0.041 * 10000
+
+if args.charging_cost is not None:
+    charging_cost_per_mile = float(args.charging_cost)
+else:
+    charging_cost_per_mile = 0.0388
+
+if args.construction_cost is not None:
+    construction_cost_per_station = float(args.construction_cost)
+else:
+    construction_cost_per_station = 5000
+
+if args.maintenance_cost is not None:
+    maintenance_fee_per_charger = float(args.maintenance_cost)
+else:
+    maintenance_fee_per_charger = 500
+
+# get sample of vehicle ranges
+min_range = 20
+if args.max_range is not None:
+    max_range = float(args.max_range)
+else:
+    max_range = 250
+if args.mean_range is not None:
+    mean_range = float(args.mean_range)
+else:
+    mean_range = 100
+sd_range = 50
+
 no_assignment_penalty = 5000
 exceed_range_penalty = 5000
 
@@ -118,12 +164,6 @@ def gen_pop(pop_size, car_data_anchor):
                           )
     return population
 
-# get sample of vehicle ranges
-min_range = 20
-max_range = 250
-mean_range = 100
-sd_range = 50
-
 # sample ranges for each vehicle
 def get_samples(min_range=min_range,
                 max_range=max_range,
@@ -151,7 +191,7 @@ def calculate_distance(car_location, station_location):
 
 
 def KNN(population, K, gen, local_best_scores):
-    S = 16
+    S = 2 * max_chargers
     stochastic=False
     for individual in range(pop_size):
         
@@ -258,8 +298,8 @@ def KNN(population, K, gen, local_best_scores):
         pct_assigned = assigned/vehicle_positions.shape[0]
         penalty_cost_no_assignment_made = (vehicle_positions.shape[0] - assigned) * no_assignment_penalty # no_assignment_penalty * (vehicle_positions.shape[0] - assigned) # (1-pct_assigned) * 
 
+        total_cost = driving_cost + charging_cost + station_cost + charger_cost + penalty_cost_no_assignment_made # + distance_cost # penalty_cost_exceeding_range
         total_cost_no_penalty = driving_cost + charging_cost + station_cost + charger_cost
-        total_cost = total_cost_no_penalty + penalty_cost_no_assignment_made # + distance_cost # penalty_cost_exceeding_range
       
         population[individual].cost = total_cost
         population[individual].assignment_proportion = pct_assigned
@@ -318,14 +358,18 @@ global_best_assignments = None
 local_best_scores = [1e9 for i in range(pop_size)] # storing local best scores (not positions)
 start = time.time()
 particle_movement = []
+with open("/home/ikerforce/Documents/Proyectos/mopta/results/gen_fitness.csv", "w") as outfile:
+    outfile.write("")
+outfile.close()
 for gen in range(generations):
     global_best_score, global_best_stations, global_best_station_counter, global_best_index, global_best_assignments, local_best_scores, population_fitness, population_fitness_no_penalty = evaluate(population, car_data, global_best_score, global_best_stations, local_best_scores, K, global_best_station_counter, global_best_index, global_best_assignments, gen)
     bests.append(global_best_score)
     local_bests.append(np.mean(local_best_scores))
     pop_fitness.append(population_fitness)
     pop_fitness_no_penalty.append(population_fitness_no_penalty)
-    # if gen % 10 == 0:
-    #     print(gen, np.mean(pop_fitness_no_penalty))
+    with open("/home/ikerforce/Documents/Proyectos/mopta/results/gen_fitness.csv", 'a') as outfile:
+        outfile.write("\t".join([str(gen), str(np.mean(pop_fitness_no_penalty)), str(np.min(pop_fitness_no_penalty))+'\n']))
+    outfile.close()
       
     if not rand:
         for ind in population:
